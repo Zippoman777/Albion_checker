@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Albion Profit Forge — Europe Server</title>
+<meta name="description" content="Crafting, refining, cooking, transport and focus profit calculator for Albion Online (Europe server).">
+<meta name="theme-color" content="#12100d">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2312100d'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23d4af37'%3E%E2%9A%92%3C/text%3E%3C/svg%3E">
+<!-- ?v= is the build stamp: bump it on release so caches (browser + service
+     worker) can never serve a stale mix of old and new modules. -->
+<link rel="stylesheet" href="css/styles.css?v=6">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-main">
+    <div class="brand">
+      <span class="brand-mark">⚒</span>
+      <div>
+        <h1>Albion Profit Forge</h1>
+        <div class="brand-sub">Europe server · albion-online-data.com</div>
+      </div>
+    </div>
+    <div class="header-meta">
+      <div id="last-update" class="last-update">no data yet</div>
+      <div id="api-stats" class="api-stats"></div>
+      <button id="refresh-btn" class="btn btn-primary">↻ Refresh prices</button>
+    </div>
+  </div>
+  <div id="loading-bar" class="loading-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" hidden>
+    <div id="load-progress" class="loading-fill"></div>
+    <span id="load-label" class="loading-label">Fetching prices…</span>
+  </div>
+</header>
+
+<div id="stale-banner" class="stale-banner" role="status" hidden></div>
+
+<nav class="tabs" role="tablist">
+  <button class="tab-btn" role="tab" data-tab="crafting" aria-selected="false">⚒ Crafting</button>
+  <button class="tab-btn" role="tab" data-tab="refining" aria-selected="false">🔥 Refining</button>
+  <button class="tab-btn" role="tab" data-tab="cooking" aria-selected="false">🍲 Cooking</button>
+  <button class="tab-btn" role="tab" data-tab="transport" aria-selected="false">🐎 Transport</button>
+  <button class="tab-btn" role="tab" data-tab="focus" aria-selected="false">✦ Focus</button>
+  <button class="tab-btn" role="tab" data-tab="settings" aria-selected="false">⚙ Settings</button>
+</nav>
+
+<main>
+
+  <!-- ============================================================ CRAFTING -->
+  <section class="tab-panel" id="tab-crafting" role="tabpanel" hidden>
+    <div class="metric-row" id="crafting-summary"></div>
+    <div class="toolbar">
+      <input type="search" id="crafting-search" class="search" placeholder="Search item, city…" aria-label="Search crafting table">
+      <select id="crafting-category" class="select" aria-label="Category filter"></select>
+      <div class="toolbar-spacer"></div>
+      <button class="btn" id="crafting-copy">📋 Copy</button>
+      <button class="btn" id="crafting-csv">⬇ CSV</button>
+    </div>
+    <p class="hint">Click any row to expand the full breakdown: per-material sourcing, fee ledger,
+      resource-return maths, quality distribution and a city-by-city comparison.</p>
+    <div id="crafting-table"></div>
+  </section>
+
+  <!-- ============================================================ REFINING -->
+  <section class="tab-panel" id="tab-refining" role="tabpanel" hidden>
+    <div class="metric-row" id="refining-summary"></div>
+    <div class="toolbar">
+      <input type="search" id="refining-search" class="search" placeholder="Search resource, city…" aria-label="Search refining table">
+      <select id="refining-category" class="select" aria-label="Category filter"></select>
+      <div class="toolbar-spacer"></div>
+      <button class="btn" id="refining-copy">📋 Copy</button>
+      <button class="btn" id="refining-csv">⬇ CSV</button>
+    </div>
+    <p class="hint">The <em>vs raw</em> column compares refining-and-selling against simply
+      reselling the raw inputs. Negative means the raws are worth more untouched.</p>
+    <div id="refining-table"></div>
+  </section>
+
+  <!-- ============================================================= COOKING -->
+  <section class="tab-panel" id="tab-cooking" role="tabpanel" hidden>
+    <div class="metric-row" id="cooking-summary"></div>
+    <div class="toolbar">
+      <input type="search" id="cooking-search" class="search" placeholder="Search food, potion…" aria-label="Search cooking table">
+      <select id="cooking-category" class="select" aria-label="Category filter"></select>
+      <div class="toolbar-spacer"></div>
+      <button class="btn" id="cooking-copy">📋 Copy</button>
+      <button class="btn" id="cooking-csv">⬇ CSV</button>
+    </div>
+    <p class="hint">Caerleon carries the cooking bonus, Brecilien the alchemy bonus — both are
+      reflected in the return rate for the matching recipes.</p>
+    <div id="cooking-table"></div>
+  </section>
+
+  <!-- =========================================================== TRANSPORT -->
+  <section class="tab-panel" id="tab-transport" role="tabpanel" hidden>
+    <div class="metric-row" id="transport-summary"></div>
+    <div class="toolbar">
+      <input type="search" id="transport-search" class="search" placeholder="Search item…" aria-label="Search transport table">
+      <div class="mode-group" role="radiogroup" aria-label="Transport view">
+        <label><input type="radio" name="transport-mode" value="all" checked> All</label>
+        <label><input type="radio" name="transport-mode" value="bulk"> Bulk</label>
+        <label><input type="radio" name="transport-mode" value="special"> Specialized</label>
+      </div>
+      <div class="toolbar-spacer"></div>
+      <button class="btn" id="transport-copy">📋 Copy</button>
+      <button class="btn" id="transport-csv">⬇ CSV</button>
+    </div>
+    <p class="hint">Flip opportunities: cheapest sell order in one city against the best price
+      anywhere else, minus market fees and your configured transport cost.</p>
+    <div id="transport-table"></div>
+  </section>
+
+  <!-- =============================================================== FOCUS -->
+  <section class="tab-panel" id="tab-focus" role="tabpanel" hidden>
+    <div class="metric-row" id="focus-summary"></div>
+    <div class="headline" id="focus-headline"></div>
+    <div class="toolbar">
+      <input type="search" id="focus-search" class="search" placeholder="Search activity…" aria-label="Search focus table">
+      <div class="toolbar-spacer"></div>
+      <button class="btn" id="focus-copy">📋 Copy</button>
+      <button class="btn" id="focus-csv">⬇ CSV</button>
+    </div>
+    <div id="focus-table"></div>
+    <div class="side-panels">
+      <div class="panel" id="farming-panel"></div>
+      <div class="panel" id="journal-panel"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ SETTINGS -->
+  <section class="tab-panel" id="tab-settings" role="tabpanel" hidden>
+    <div class="panel intro-panel">
+      <h3>How the numbers are produced</h3>
+      <p>Profit per item =
+        <code>(sell price × quality multiplier − setup fee − sales fee) − (material cost + station fee) + returned resource value</code>.
+        Materials are priced at the cheapest city that has a fresh enough quote; the product is
+        priced at the best city including the Black Market.</p>
+      <p class="muted small">Refining recipes are exact. Equipment and cooking recipes use
+        per-slot templates — accurate in shape, and every one can be overridden per item id via
+        <code>recipeOverrides</code> in your saved settings. Station fees are modelled as
+        silver-per-100-item-value, which is how the in-game station tax actually behaves.</p>
+    </div>
+    <div id="settings-body"></div>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <span>Price data from the community-run <a href="https://www.albion-online-data.com/" target="_blank" rel="noopener">Albion Online Data Project</a>.
+  Quotes are uploaded by players, so thin markets can be stale or missing entirely.</span>
+</footer>
+
+<div id="toast-host" class="toast-host" aria-live="polite"></div>
+
+<script src="js/config.js?v=6"></script>
+<script src="js/store.js?v=6"></script>
+<script src="js/recipes.js?v=6"></script>
+<script src="js/api.js?v=6"></script>
+<script src="js/calc.js?v=6"></script>
+<script src="js/ui.js?v=6"></script>
+<script src="js/app.js?v=6"></script>
+</body>
+</html>

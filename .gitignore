@@ -1,0 +1,16 @@
+# Local updater state — created on each machine, never uploaded
+.app-version
+.backup/
+
+# Local tooling / editor
+.claude/
+.vscode/
+.idea/
+
+# OS cruft
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Node (only if someone runs the npx fallback locally)
+node_modules/
