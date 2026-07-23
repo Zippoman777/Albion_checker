@@ -37,12 +37,57 @@ cd /d "%APPDIR%"
 set "APPNAME=Albion Profit Forge"
 set "SERVERTITLE=AlbionProfitForgeServer"
 set "PORT=8123"
+set "REPO=Zippoman777/Albion_checker"
+set "BRANCH=main"
 
 echo.
 echo  ===========================================================
 echo    %APPNAME%  -  launcher
 echo  ===========================================================
 echo.
+
+REM ==========================================================
+REM  STEP 0a  -  first-run bootstrap: if the app is not here, download the
+REM  whole project from GitHub. This lets start.bat be shared on its own as a
+REM  one-file installer. Needs only PowerShell (built into Windows) + internet.
+REM ==========================================================
+if exist "index.html" goto :afterboot
+
+echo  [setup] Application files not found - this looks like a fresh install.
+echo  [setup] Downloading %APPNAME% from GitHub...
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';" ^
+  "try{[Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12}catch{};" ^
+  "$h=@{'User-Agent'='AlbionProfitForge-Bootstrap'};" ^
+  "$tmp=Join-Path $env:TEMP ('apf_boot_'+[guid]::NewGuid().ToString('N'));New-Item -ItemType Directory -Path $tmp|Out-Null;" ^
+  "$zip=Join-Path $tmp 'repo.zip';" ^
+  "Invoke-WebRequest ('https://codeload.github.com/%REPO%/zip/refs/heads/%BRANCH%') -OutFile $zip -Headers $h -TimeoutSec 180;" ^
+  "Expand-Archive $zip $tmp -Force;" ^
+  "$idx=Get-ChildItem $tmp -Recurse -Filter index.html|Select-Object -First 1;" ^
+  "if(-not $idx){throw 'archive missing index.html'};" ^
+  "robocopy $idx.Directory.FullName '%APPDIR%' /E /XD '.git' /R:1 /W:1 /NFL /NDL /NJH /NJS /NP|Out-Null;" ^
+  "Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue;" ^
+  "Write-Host '  [setup] Download complete.'"
+
+if not exist "index.html" (
+  echo.
+  echo  -----------------------------------------------------------
+  echo   PROBLEM: could not download the application.
+  echo  -----------------------------------------------------------
+  echo.
+  echo   The one-file installer needs an internet connection the first
+  echo   time, to fetch the app from:
+  echo       https://github.com/%REPO%
+  echo.
+  echo   Check your connection ^(and any antivirus/firewall block on
+  echo   PowerShell^) and run start.bat again.
+  echo.
+  goto :fail
+)
+echo.
+
+:afterboot
 
 REM ==========================================================
 REM  STEP 0  -  check GitHub for an update (needs neither Python nor Git)

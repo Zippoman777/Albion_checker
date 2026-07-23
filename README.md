@@ -10,7 +10,12 @@ Live price data comes from the community-run
 
 ### Windows — just double-click `start.bat`
 
-It checks everything and tells you exactly what is wrong if something is missing:
+`start.bat` is a **one-file installer**: you can share it on its own. On first run, if the app
+files aren't next to it, it downloads the whole project from GitHub into that folder (PowerShell
+only — no Python or Git needed for this step), then launches. Subsequent runs skip the download
+and just auto-update.
+
+It also checks everything and tells you exactly what is wrong if something is missing:
 
 * verifies all 11 application files are present, and **names any that are missing**
 * finds Python (via `py` or `python`) or falls back to Node.js
