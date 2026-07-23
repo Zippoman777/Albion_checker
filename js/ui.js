@@ -95,7 +95,8 @@
     this.sortDir = opts.defaultDir || -1;
     this.filterText = '';
     this.categoryFilter = '';
-    this.expanded = Object.create(null);
+    // A caller can pass a shared map so expansion survives a full re-render.
+    this.expanded = opts.expanded || Object.create(null);
     this.pageSize = opts.pageSize || 100;
     this.page = 0;
     this.render();
@@ -226,7 +227,10 @@
       var row = pageRows[idx];
       if (!row || !self.detail) return;
       tr.addEventListener('click', function (e) {
-        if (e.target.closest('a,button.copy-btn')) return;
+        // Don't toggle the row when interacting with controls inside it — but
+        // the expand button itself must still toggle (it has no own handler).
+        if (e.target.closest('a,input,label,select,textarea')) return;
+        if (e.target.closest('button:not(.expand-btn)')) return;
         var k = rowKey(row);
         self.expanded[k] = !self.expanded[k];
         self.render();

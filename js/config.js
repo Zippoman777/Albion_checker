@@ -28,6 +28,11 @@
 
   AO.BLACK_MARKET = 'Black Market';
 
+  // Pseudo-cities used to inject user-entered prices into the price index.
+  // Kept separate so a manual buy price never contaminates a manual sell price.
+  AO.MANUAL_BUY = 'My buy';
+  AO.MANUAL_SELL = 'My sell';
+
   // The API wants these exact strings in ?locations=
   AO.LOCATION_QUERY = {
     'Thetford': 'Thetford',
@@ -156,5 +161,17 @@
 
   AO.TIERS = [2, 3, 4, 5, 6, 7, 8];
   AO.ENCHANTS = [0, 1, 2, 3];
+
+  /**
+   * Human-readable name for an item id, resolved from the localized name dump.
+   * Handles the `@n` enchant suffix (the dump only keys the base item), so
+   * "T5_2H_FROSTSTAFF@2" becomes "Adept's Frost Staff .2".
+   */
+  AO.displayName = function (id) {
+    var m = /@(\d)$/.exec(id);
+    var base = m ? id.slice(0, -2) : id;
+    var name = (AO.itemNames && AO.itemNames[base]) || base;
+    return m ? name + ' .' + m[1] : name;
+  };
 
 }(window.AO = window.AO || {}));

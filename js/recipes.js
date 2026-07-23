@@ -71,215 +71,65 @@
     return out;
   };
 
-  // Focus cost roughly doubles per tier and per enchant level.
+  // Refining focus cost roughly doubles per tier and per enchant level.
+  // (Crafting/cooking focus is exact, straight from AO.RECIPE_DATA.)
   function focusForRefine(tier, ench) {
     return Math.round(4 * Math.pow(2, tier - 2) * Math.pow(2, ench));
   }
-  function focusForCraft(tier, ench, unitMats) {
-    return Math.round(unitMats * 0.6 * Math.pow(2, tier - 2) * Math.pow(2, ench));
+
+  /* ---------------------------------------------- crafting & cooking data ---
+     Equipment, tool, food and potion recipes come straight from the official
+     ao-bin-dumps via js/recipes-data.js (AO.RECIPE_DATA). Each entry is a
+     compact tuple: [category, tier, enchant, focus, yield, [[matId,count]...]].
+     This is authoritative: exact materials, real focus cost, and the real
+     amount produced per craft (potions yield 5, food yields 1, etc.).        */
+
+  var CRAFT_CATS = {
+    PLATE: 1, LEATHER_ARMOR: 1, CLOTH_ARMOR: 1, MELEE: 1,
+    RANGED: 1, MAGIC: 1, OFFHAND: 1, TOOL: 1
+  };
+
+  function recipeFromData(kind, id, tuple) {
+    return {
+      kind: kind,
+      category: tuple[0],
+      tier: tuple[1],
+      enchant: tuple[2],
+      resultId: id,
+      resultQty: tuple[4] || 1,
+      materials: tuple[5].map(function (m) { return { id: m[0], qty: m[1] }; }),
+      bonusCity: AO.CRAFT_BONUS_CITY[tuple[0]],
+      focusCost: tuple[3] || 0,
+      name: null // resolved from the localized name dump at render time
+    };
   }
 
-  /* ------------------------------------------------------------- equipment */
-
-  // Each template: base id fragment -> material mix (family -> qty) + category.
-  // Quantities are for a single craft of one item.
-  var EQUIP_TEMPLATES = [
-    // --- plate armor
-    { base: 'HEAD_PLATE_SET1', name: 'Soldier Helmet', cat: 'PLATE', mats: { METALBAR: 8 } },
-    { base: 'ARMOR_PLATE_SET1', name: 'Soldier Armor', cat: 'PLATE', mats: { METALBAR: 16 } },
-    { base: 'SHOES_PLATE_SET1', name: 'Soldier Boots', cat: 'PLATE', mats: { METALBAR: 8 } },
-    { base: 'HEAD_PLATE_SET2', name: 'Knight Helmet', cat: 'PLATE', mats: { METALBAR: 4, LEATHER: 4 } },
-    { base: 'ARMOR_PLATE_SET2', name: 'Knight Armor', cat: 'PLATE', mats: { METALBAR: 8, LEATHER: 8 } },
-    { base: 'SHOES_PLATE_SET2', name: 'Knight Boots', cat: 'PLATE', mats: { METALBAR: 4, LEATHER: 4 } },
-    { base: 'HEAD_PLATE_SET3', name: 'Guardian Helmet', cat: 'PLATE', mats: { METALBAR: 4, CLOTH: 4 } },
-    { base: 'ARMOR_PLATE_SET3', name: 'Guardian Armor', cat: 'PLATE', mats: { METALBAR: 8, CLOTH: 8 } },
-    { base: 'SHOES_PLATE_SET3', name: 'Guardian Boots', cat: 'PLATE', mats: { METALBAR: 4, CLOTH: 4 } },
-    // --- leather armor
-    { base: 'HEAD_LEATHER_SET1', name: 'Mercenary Hood', cat: 'LEATHER_ARMOR', mats: { LEATHER: 8 } },
-    { base: 'ARMOR_LEATHER_SET1', name: 'Mercenary Jacket', cat: 'LEATHER_ARMOR', mats: { LEATHER: 16 } },
-    { base: 'SHOES_LEATHER_SET1', name: 'Mercenary Shoes', cat: 'LEATHER_ARMOR', mats: { LEATHER: 8 } },
-    { base: 'HEAD_LEATHER_SET2', name: 'Hunter Hood', cat: 'LEATHER_ARMOR', mats: { LEATHER: 4, CLOTH: 4 } },
-    { base: 'ARMOR_LEATHER_SET2', name: 'Hunter Jacket', cat: 'LEATHER_ARMOR', mats: { LEATHER: 8, CLOTH: 8 } },
-    { base: 'SHOES_LEATHER_SET2', name: 'Hunter Shoes', cat: 'LEATHER_ARMOR', mats: { LEATHER: 4, CLOTH: 4 } },
-    { base: 'HEAD_LEATHER_SET3', name: 'Assassin Hood', cat: 'LEATHER_ARMOR', mats: { LEATHER: 4, METALBAR: 4 } },
-    { base: 'ARMOR_LEATHER_SET3', name: 'Assassin Jacket', cat: 'LEATHER_ARMOR', mats: { LEATHER: 8, METALBAR: 8 } },
-    { base: 'SHOES_LEATHER_SET3', name: 'Assassin Shoes', cat: 'LEATHER_ARMOR', mats: { LEATHER: 4, METALBAR: 4 } },
-    // --- cloth armor
-    { base: 'HEAD_CLOTH_SET1', name: 'Scholar Cowl', cat: 'CLOTH_ARMOR', mats: { CLOTH: 8 } },
-    { base: 'ARMOR_CLOTH_SET1', name: 'Scholar Robe', cat: 'CLOTH_ARMOR', mats: { CLOTH: 16 } },
-    { base: 'SHOES_CLOTH_SET1', name: 'Scholar Sandals', cat: 'CLOTH_ARMOR', mats: { CLOTH: 8 } },
-    { base: 'HEAD_CLOTH_SET2', name: 'Cleric Cowl', cat: 'CLOTH_ARMOR', mats: { CLOTH: 4, LEATHER: 4 } },
-    { base: 'ARMOR_CLOTH_SET2', name: 'Cleric Robe', cat: 'CLOTH_ARMOR', mats: { CLOTH: 8, LEATHER: 8 } },
-    { base: 'SHOES_CLOTH_SET2', name: 'Cleric Sandals', cat: 'CLOTH_ARMOR', mats: { CLOTH: 4, LEATHER: 4 } },
-    { base: 'HEAD_CLOTH_SET3', name: 'Mage Cowl', cat: 'CLOTH_ARMOR', mats: { CLOTH: 4, METALBAR: 4 } },
-    { base: 'ARMOR_CLOTH_SET3', name: 'Mage Robe', cat: 'CLOTH_ARMOR', mats: { CLOTH: 8, METALBAR: 8 } },
-    { base: 'SHOES_CLOTH_SET3', name: 'Mage Sandals', cat: 'CLOTH_ARMOR', mats: { CLOTH: 4, METALBAR: 4 } },
-    // --- melee weapons
-    { base: 'MAIN_SWORD', name: 'Broadsword', cat: 'MELEE', mats: { METALBAR: 16, LEATHER: 8 } },
-    { base: '2H_CLAYMORE', name: 'Claymore', cat: 'MELEE', mats: { METALBAR: 20, LEATHER: 12 } },
-    { base: 'MAIN_AXE', name: 'Battleaxe', cat: 'MELEE', mats: { METALBAR: 16, PLANKS: 8 } },
-    { base: '2H_AXE', name: 'Greataxe', cat: 'MELEE', mats: { METALBAR: 20, PLANKS: 12 } },
-    { base: 'MAIN_MACE', name: 'Mace', cat: 'MELEE', mats: { METALBAR: 16, LEATHER: 8 } },
-    { base: '2H_MACE', name: 'Heavy Mace', cat: 'MELEE', mats: { METALBAR: 20, LEATHER: 12 } },
-    { base: 'MAIN_HAMMER', name: 'Hammer', cat: 'MELEE', mats: { METALBAR: 16, PLANKS: 8 } },
-    { base: '2H_POLEHAMMER', name: 'Polehammer', cat: 'MELEE', mats: { METALBAR: 20, PLANKS: 12 } },
-    { base: 'MAIN_SPEAR', name: 'Spear', cat: 'MELEE', mats: { METALBAR: 16, PLANKS: 8 } },
-    { base: '2H_SPEAR', name: 'Pike', cat: 'MELEE', mats: { METALBAR: 20, PLANKS: 12 } },
-    { base: 'MAIN_DAGGER', name: 'Dagger', cat: 'MELEE', mats: { METALBAR: 16, LEATHER: 8 } },
-    { base: '2H_DAGGERPAIR', name: 'Dagger Pair', cat: 'MELEE', mats: { METALBAR: 20, LEATHER: 12 } },
-    { base: '2H_QUARTERSTAFF', name: 'Quarterstaff', cat: 'MELEE', mats: { PLANKS: 20, METALBAR: 12 } },
-    // --- ranged
-    { base: '2H_BOW', name: 'Bow', cat: 'RANGED', mats: { PLANKS: 20, LEATHER: 12 } },
-    { base: '2H_WARBOW', name: 'Warbow', cat: 'RANGED', mats: { PLANKS: 20, LEATHER: 12 } },
-    { base: '2H_LONGBOW', name: 'Longbow', cat: 'RANGED', mats: { PLANKS: 20, LEATHER: 12 } },
-    { base: '2H_CROSSBOW', name: 'Crossbow', cat: 'RANGED', mats: { PLANKS: 20, METALBAR: 12 } },
-    { base: 'MAIN_1HCROSSBOW', name: 'Light Crossbow', cat: 'RANGED', mats: { PLANKS: 16, METALBAR: 8 } },
-    // --- magic
-    { base: 'MAIN_FIRESTAFF', name: 'Fire Staff', cat: 'MAGIC', mats: { PLANKS: 16, CLOTH: 8 } },
-    { base: '2H_FIRESTAFF', name: 'Great Fire Staff', cat: 'MAGIC', mats: { PLANKS: 20, CLOTH: 12 } },
-    { base: 'MAIN_HOLYSTAFF', name: 'Holy Staff', cat: 'MAGIC', mats: { PLANKS: 16, CLOTH: 8 } },
-    { base: '2H_HOLYSTAFF', name: 'Great Holy Staff', cat: 'MAGIC', mats: { PLANKS: 20, CLOTH: 12 } },
-    { base: 'MAIN_ARCANESTAFF', name: 'Arcane Staff', cat: 'MAGIC', mats: { PLANKS: 16, CLOTH: 8 } },
-    { base: '2H_ARCANESTAFF', name: 'Great Arcane Staff', cat: 'MAGIC', mats: { PLANKS: 20, CLOTH: 12 } },
-    { base: 'MAIN_FROSTSTAFF', name: 'Frost Staff', cat: 'MAGIC', mats: { PLANKS: 16, CLOTH: 8 } },
-    { base: '2H_FROSTSTAFF', name: 'Great Frost Staff', cat: 'MAGIC', mats: { PLANKS: 20, CLOTH: 12 } },
-    { base: 'MAIN_CURSEDSTAFF', name: 'Cursed Staff', cat: 'MAGIC', mats: { PLANKS: 16, CLOTH: 8 } },
-    { base: '2H_CURSEDSTAFF', name: 'Great Cursed Staff', cat: 'MAGIC', mats: { PLANKS: 20, CLOTH: 12 } },
-    { base: 'MAIN_NATURESTAFF', name: 'Nature Staff', cat: 'MAGIC', mats: { PLANKS: 16, CLOTH: 8 } },
-    { base: '2H_NATURESTAFF', name: 'Great Nature Staff', cat: 'MAGIC', mats: { PLANKS: 20, CLOTH: 12 } },
-    // --- off-hands & accessories
-    { base: 'OFF_SHIELD', name: 'Shield', cat: 'OFFHAND', mats: { METALBAR: 8, PLANKS: 8 } },
-    { base: 'OFF_TOWERSHIELD', name: 'Tower Shield', cat: 'OFFHAND', mats: { METALBAR: 12, PLANKS: 4 } },
-    { base: 'OFF_BOOK', name: 'Tome of Spells', cat: 'OFFHAND', mats: { CLOTH: 8, LEATHER: 8 } },
-    { base: 'OFF_TORCH', name: 'Torch', cat: 'OFFHAND', mats: { PLANKS: 8, CLOTH: 8 } },
-    { base: 'OFF_HORN', name: 'Horn', cat: 'OFFHAND', mats: { METALBAR: 8, LEATHER: 8 } },
-    { base: 'BAG', name: 'Bag', cat: 'OFFHAND', mats: { LEATHER: 8, CLOTH: 8 } },
-    { base: 'CAPE', name: 'Cape', cat: 'OFFHAND', mats: { CLOTH: 8, LEATHER: 8 } },
-    // --- tools (no enchant line in practice, generated at enchant 0 only)
-    { base: '2H_TOOL_PICK', name: 'Pickaxe', cat: 'TOOL', mats: { METALBAR: 12, PLANKS: 8 }, noEnchant: true },
-    { base: '2H_TOOL_AXE', name: 'Axe', cat: 'TOOL', mats: { METALBAR: 12, PLANKS: 8 }, noEnchant: true },
-    { base: '2H_TOOL_SICKLE', name: 'Sickle', cat: 'TOOL', mats: { METALBAR: 12, PLANKS: 8 }, noEnchant: true },
-    { base: '2H_TOOL_HAMMER', name: 'Stone Hammer', cat: 'TOOL', mats: { METALBAR: 12, PLANKS: 8 }, noEnchant: true },
-    { base: '2H_TOOL_SKINNINGKNIFE', name: 'Skinning Knife', cat: 'TOOL', mats: { METALBAR: 12, PLANKS: 8 }, noEnchant: true }
-  ];
-  Recipes.EQUIP_TEMPLATES = EQUIP_TEMPLATES;
-
+  /** Every craftable weapon / armour / off-hand / tool from the dump. */
   Recipes.buildCrafting = function () {
+    var data = AO.RECIPE_DATA || {};
     var out = [];
-    EQUIP_TEMPLATES.forEach(function (tpl) {
-      AO.TIERS.forEach(function (tier) {
-        if (tier < 4) return; // enchant lines and most gear only matter from T4
-        AO.ENCHANTS.forEach(function (ench) {
-          if (ench > 0 && tpl.noEnchant) return;
-          var mats = [];
-          var unitCount = 0;
-          Object.keys(tpl.mats).forEach(function (fam) {
-            mats.push({ id: itemId(tier, fam, ench), qty: tpl.mats[fam] });
-            unitCount += tpl.mats[fam];
-          });
-          out.push({
-            kind: 'crafting',
-            category: tpl.cat,
-            tier: tier,
-            enchant: ench,
-            name: 'T' + tier + (ench ? '.' + ench : '') + ' ' + tpl.name,
-            resultId: itemId(tier, tpl.base, ench),
-            resultQty: 1,
-            materials: mats,
-            bonusCity: AO.CRAFT_BONUS_CITY[tpl.cat],
-            focusCost: focusForCraft(tier, ench, unitCount)
-          });
-        });
-      });
+    Object.keys(data).forEach(function (id) {
+      if (CRAFT_CATS[data[id][0]]) out.push(recipeFromData("crafting", id, data[id]));
     });
     return out;
   };
 
-  /* --------------------------------------------------------------- cooking */
-
-  // Cooking / alchemy inputs. Unlike ore or hide, farm produce does not exist
-  // at every tier — each crop, herb and animal product occupies one fixed tier,
-  // so recipes are expressed against these ladders rather than a tier suffix.
-  var CROPS = { 1: 'T1_CARROT', 2: 'T2_BEAN', 3: 'T3_WHEAT', 4: 'T4_TURNIP', 5: 'T5_CABBAGE', 6: 'T6_POTATO' };
-  var HERBS = { 2: 'T2_AGARIC', 3: 'T3_COMFREY', 4: 'T4_BURDOCK', 5: 'T5_TEASEL', 6: 'T6_FOXGLOVE', 7: 'T7_MULLEIN' };
-  var EGGS = { 3: 'T3_EGG', 5: 'T5_EGG' };
-  var MILK = { 4: 'T4_MILK', 6: 'T6_MILK', 8: 'T8_MILK' };
-  var BUTTER = { 4: 'T4_BUTTER', 6: 'T6_BUTTER', 8: 'T8_BUTTER' };
-  Recipes.CROPS = CROPS;
-  Recipes.HERBS = HERBS;
-
-  function nearest(ladder, tier) {
-    var keys = Object.keys(ladder).map(Number).sort(function (a, b) { return a - b; });
-    var pick = keys[0];
-    keys.forEach(function (k) { if (k <= tier) pick = k; });
-    return ladder[pick];
-  }
-
-  // Meals and potions only exist at specific tiers — these are the real ones.
-  // Ingredient mixes are editable defaults (see recipeOverrides).
-  var COOK_TEMPLATES = [
-    { base: 'MEAL_SOUP', name: 'Soup', kind: 'FOOD', tiers: [1, 3, 5], fish: true,
-      mats: function (t) { return [{ id: nearest(CROPS, t), qty: 4 }]; } },
-    { base: 'MEAL_SALAD', name: 'Salad', kind: 'FOOD', tiers: [2, 4, 6], fish: true,
-      mats: function (t) {
-        return [{ id: nearest(CROPS, t), qty: 4 }, { id: nearest(CROPS, t - 1), qty: 1 }];
-      } },
-    { base: 'MEAL_PIE', name: 'Pie', kind: 'FOOD', tiers: [3, 5, 7], fish: true,
-      mats: function (t) {
-        return [{ id: nearest(CROPS, t), qty: 3 }, { id: 'T3_FLOUR', qty: 1 }];
-      } },
-    { base: 'MEAL_OMELETTE', name: 'Omelette', kind: 'FOOD', tiers: [3, 5, 7], fish: true,
-      mats: function (t) {
-        return [{ id: nearest(EGGS, t), qty: 4 }, { id: nearest(CROPS, t), qty: 1 }];
-      } },
-    { base: 'MEAL_STEW', name: 'Stew', kind: 'FOOD', tiers: [4, 6, 8], fish: true,
-      mats: function (t) {
-        return [{ id: nearest(MILK, t), qty: 4 }, { id: nearest(CROPS, t), qty: 2 }];
-      } },
-    { base: 'MEAL_SANDWICH', name: 'Sandwich', kind: 'FOOD', tiers: [4, 6, 8], fish: false,
-      mats: function (t) {
-        return [{ id: nearest(BUTTER, t), qty: 3 }, { id: nearest(CROPS, t), qty: 2 }];
-      } },
-    { base: 'POTION_HEAL', name: 'Healing Potion', kind: 'POTION', tiers: [2, 4, 6],
-      mats: function (t) { return [{ id: nearest(HERBS, t), qty: 4 }]; } },
-    { base: 'POTION_ENERGY', name: 'Energy Potion', kind: 'POTION', tiers: [2, 4, 6],
-      mats: function (t) { return [{ id: nearest(HERBS, t), qty: 4 }]; } },
-    { base: 'POTION_REVIVE', name: 'Resistance Potion', kind: 'POTION', tiers: [3, 5, 7],
-      mats: function (t) { return [{ id: nearest(HERBS, t), qty: 4 }]; } },
-    { base: 'POTION_STONESKIN', name: 'Gigantify Potion', kind: 'POTION', tiers: [3, 5, 7],
-      mats: function (t) { return [{ id: nearest(HERBS, t), qty: 4 }]; } },
-    { base: 'POTION_SLOWFIELD', name: 'Sticky Potion', kind: 'POTION', tiers: [3, 5, 7],
-      mats: function (t) { return [{ id: nearest(HERBS, t), qty: 4 }]; } },
-    { base: 'POTION_COOLDOWN', name: 'Cleric Potion', kind: 'POTION', tiers: [4, 6, 8],
-      mats: function (t) { return [{ id: nearest(HERBS, t), qty: 4 }]; } }
-  ];
-  Recipes.COOK_TEMPLATES = COOK_TEMPLATES;
-
   /**
-   * @param {boolean} fishSauce  When on, food recipes switch to their `_FISH`
-   *   product variant and consume a jar of fish sauce. Fish sauce is a real
-   *   item (T1_FISHSAUCE_LEVEL1-3), not a flat silver surcharge.
+   * All food and potion recipes.
+   * @param {boolean} fishSauce  When on, each food that has a `_FISH` variant
+   *   is swapped for it — the fish version is a distinct item that consumes a
+   *   jar of fish sauce and sells higher. Both come from the live market.
    */
   Recipes.buildCooking = function (fishSauce) {
+    var data = AO.RECIPE_DATA || {};
     var out = [];
-    COOK_TEMPLATES.forEach(function (tpl) {
-      tpl.tiers.forEach(function (tier) {
-        var useFish = !!fishSauce && tpl.fish;
-        var mats = tpl.mats(tier);
-        if (useFish) mats = mats.concat([{ id: 'T1_FISHSAUCE_LEVEL1', qty: 1 }]);
-        out.push({
-          kind: 'cooking',
-          category: tpl.kind,
-          tier: tier,
-          enchant: 0,
-          name: 'T' + tier + ' ' + tpl.name + (useFish ? ' (fish sauce)' : ''),
-          resultId: 'T' + tier + '_' + tpl.base + (useFish ? '_FISH' : ''),
-          resultQty: 1,
-          materials: mats,
-          bonusCity: AO.CRAFT_BONUS_CITY[tpl.kind],
-          focusCost: focusForCraft(tier, 0, 6)
-        });
-      });
+    Object.keys(data).forEach(function (id) {
+      var cat = data[id][0];
+      if (cat !== "FOOD" && cat !== "POTION") return;
+      if (/_FISH$/.test(id)) return; // reached via its base when fish sauce is on
+      var useId = id;
+      if (fishSauce && cat === "FOOD" && data[id + "_FISH"]) useId = id + "_FISH";
+      out.push(recipeFromData("cooking", useId, data[useId]));
     });
     return out;
   };

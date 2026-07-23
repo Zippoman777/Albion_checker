@@ -115,32 +115,44 @@ or `css/`, bump that stamp in **both** `index.html` and `BUILD` in `sw.js` — o
 users can boot a stale mix of old and new modules. (This bit me during development; the service
 worker happily served a half-updated app.)
 
-## Recipe accuracy — please read
+## Recipe accuracy
 
-* **Refining recipes are exact.** They follow the published tier progression
-  (T4: 2 raw + 1 T3 refined, T5: 3 + 1, T6: 4 + 1, T7/T8: 5 + 1).
-* **Cooking recipes use real item IDs** verified against the game dump — meals and potions exist
-  only at specific tiers, and farm produce occupies one fixed tier each, which the code models.
-  The *ingredient quantities*, however, are sensible defaults rather than verified game data.
-* **Equipment recipes are per-slot templates** (helmet 8 units, armor 16, boots 8, one-handed
-  weapons 16+8, two-handed 20+12, and so on). These are accurate in shape and give a realistic
-  picture of the economy, but individual items may differ from live game data.
+All crafting, cooking and refining recipes are extracted **directly from the official
+`ao-bin-dumps`** (`tools/gen-recipes.js` → `js/recipes-data.js`): exact materials, real focus
+cost, and the real amount produced per craft (potions yield 5, food 1, etc.). Artifact, faction
+and avalonian variants are intentionally excluded to keep the tables to the plain craftable
+economy.
 
-Anything you find to be wrong can be corrected without touching the code — the `recipeOverrides`
-map in your saved settings takes an item ID and replaces its material list:
+To regenerate after a game patch:
 
-```js
-// in the browser console
-AO.Settings.data.recipeOverrides['T5_2H_CLAYMORE'] = [
-  { id: 'T5_METALBAR', qty: 20 },
-  { id: 'T5_LEATHER',  qty: 12 }
-];
-AO.Settings.save();
-location.reload();
+```bash
+# download the latest dump, then:
+node tools/gen-recipes.js path/to/items.json
 ```
 
-Likewise, the resource-return percentages and per-city station taxes are all exposed in Settings
-because Sandbox Interactive rebalances them periodically.
+This rewrites `js/recipes-data.js`. Bump the `?v=` build stamp and commit.
+
+The resource-return percentages and per-city station taxes are exposed in Settings because
+Sandbox Interactive rebalances them periodically.
+
+## My prices — overriding stale market data
+
+Albion prices are uploaded by players, so thin markets go stale or missing. Expand any row in a
+calculator tab and use the **My prices** box to type your own buy price for a material or sell
+price for a product. It:
+
+* applies instantly to **every** calculation across all tabs,
+* is treated as fresh (never flagged stale) and bypasses the troll-listing filter,
+* is saved to `localStorage` and survives reloads.
+
+Manage or clear all overrides under **Settings → My prices**.
+
+## Traded volume
+
+Every expanded row shows the item's **average units sold per day and per week** (from the price
+history charts), with a "thin market" warning on low-liquidity items — so a high paper profit on
+something nobody trades is easy to spot. Volume is fetched on demand per item and cached for an
+hour.
 
 ## Files
 

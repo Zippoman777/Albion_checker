@@ -48,6 +48,40 @@
   Calc.ageMinutes = ageMinutes;
 
   /**
+   * Inject user-entered prices into the price index as fresh synthetic quotes
+   * under the two manual pseudo-cities. Removes stale manual quotes first, so
+   * clearing an override in the UI takes effect on the next apply.
+   * @param {object} prices    the live price index (mutated in place)
+   * @param {object} overrides itemId -> { buy, sell }
+   */
+  Calc.applyPriceOverrides = function (prices, overrides) {
+    // Drop any manual quotes from a previous apply.
+    Object.keys(prices).forEach(function (id) {
+      delete prices[id][AO.MANUAL_BUY];
+      delete prices[id][AO.MANUAL_SELL];
+    });
+    if (!overrides) return;
+    var now = new Date().toISOString();
+    Object.keys(overrides).forEach(function (id) {
+      var o = overrides[id] || {};
+      if (!(o.buy > 0) && !(o.sell > 0)) return;
+      if (!prices[id]) prices[id] = Object.create(null);
+      if (o.buy > 0) {
+        prices[id][AO.MANUAL_BUY] = {
+          city: AO.MANUAL_BUY, sellMin: o.buy, sellMax: o.buy, buyMax: o.buy, buyMin: o.buy,
+          sellAt: now, buyAt: now, manual: true
+        };
+      }
+      if (o.sell > 0) {
+        prices[id][AO.MANUAL_SELL] = {
+          city: AO.MANUAL_SELL, sellMin: o.sell, sellMax: o.sell, buyMax: o.sell, buyMin: o.sell,
+          sellAt: now, buyAt: now, manual: true
+        };
+      }
+    });
+  };
+
+  /**
    * Cheapest place to buy `itemId`.
    * Honours the "buy off sell orders vs place buy orders" setting and the
    * maximum acceptable data age.
@@ -58,7 +92,8 @@
     var useSell = settings.useSellOrdersForMaterials;
     var maxAge = settings.maxDataAgeMinutes;
     var best = null;
-    cities.forEach(function (city) {
+    // A user-entered buy price always competes as a sourcing option.
+    cities.concat(AO.MANUAL_BUY).forEach(function (city) {
       var q = byItem[city];
       if (!q) return;
       var price = useSell ? q.sellMin : q.buyMax;
@@ -66,7 +101,7 @@
       if (!price) return;
       if (maxAge && age != null && age > maxAge) return;
       if (!best || price < best.price) {
-        best = { city: city, price: price, ageMinutes: age };
+        best = { city: city, price: price, ageMinutes: age, manual: !!q.manual };
       }
     });
     return best;
@@ -124,20 +159,23 @@
     if (!byItem) return null;
     var candidates = cities.slice();
     if (settings.includeBlackMarket) candidates.push(AO.BLACK_MARKET);
+    candidates.push(AO.MANUAL_SELL); // a user-entered sell price always competes
     var ceiling = Calc.plausibleCeiling(prices, itemId, settings);
     var best = null;
     candidates.forEach(function (city) {
       var q = byItem[city];
       if (!q) return;
       var isBM = city === AO.BLACK_MARKET;
+      var manual = !!q.manual;
       var price = (isBM || settings.useBuyOrdersForSales) ? q.buyMax : q.sellMin;
       var instant = isBM || settings.useBuyOrdersForSales;
       var age = ageMinutes(instant ? q.buyAt : q.sellAt);
       if (!price) return;
-      if (ceiling != null && price > ceiling) return;
+      // Never apply the troll-listing ceiling to a price the user set themselves.
+      if (!manual && ceiling != null && price > ceiling) return;
       if (settings.maxDataAgeMinutes && age != null && age > settings.maxDataAgeMinutes) return;
       if (!best || price > best.price) {
-        best = { city: city, price: price, ageMinutes: age, instant: instant, blackMarket: isBM };
+        best = { city: city, price: price, ageMinutes: age, instant: instant, blackMarket: isBM, manual: manual };
       }
     });
     return best;
@@ -261,9 +299,7 @@
     return {
       recipe: recipe,
       itemId: recipe.resultId,
-      // Refining recipes carry no hand-written name; fall back to the
-      // localized name dump before showing a bare item id.
-      name: recipe.name || (AO.itemNames && AO.itemNames[recipe.resultId]) || recipe.resultId,
+      name: recipe.name || AO.displayName(recipe.resultId),
       tier: recipe.tier,
       enchant: recipe.enchant,
       category: recipe.category || recipe.family,
@@ -293,7 +329,9 @@
 
       focusCost: focusCost,
       useFocus: useFocus,
-      profit: profit,
+      profit: profit,                 // per craft (a craft can yield >1 item)
+      yield: recipe.resultQty || 1,
+      profitPerUnit: profit / (recipe.resultQty || 1),
       profitPer100: profit * 100,
       profitPer1000: profit * 1000,
       profitPerFocus: profitPerFocus,

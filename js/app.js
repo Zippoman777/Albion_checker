@@ -9,6 +9,9 @@
     fetchedAt: null,
     partial: false,
     tables: Object.create(null),
+    // Shared row-expansion maps so an expanded detail survives a re-render
+    // (e.g. after editing a manual price inside it).
+    expandedState: { crafting: {}, refining: {}, cooking: {}, transport: {}, focus: {} },
     recipes: { crafting: [], refining: [], cooking: [] },
     results: { crafting: [], refining: [], cooking: [], transport: [], focus: [], journals: [] },
     loading: false,
@@ -84,6 +87,7 @@
       self.fetchedAt = res.fetchedAt;
       self.partial = res.partial;
       self.loading = false;
+      AO.Calc.applyPriceOverrides(self.prices, AO.Settings.data.priceOverrides);
       self.recompute();
       self.renderHeader();
       self.renderAll();
@@ -109,6 +113,18 @@
   }
 
   /* ------------------------------------------------------------- computation */
+
+  /**
+   * Re-apply manual price overrides and re-render everything, without a new
+   * network fetch. Called when the user edits a "My price" value.
+   */
+  App.reapplyPrices = function () {
+    if (!this.fetchedAt) return;
+    AO.Calc.applyPriceOverrides(this.prices, AO.Settings.data.priceOverrides);
+    this.recompute();
+    this.renderAll();
+    this.renderHeader();
+  };
 
   App.recompute = function () {
     var s = AO.runtimeSettings();
@@ -239,6 +255,30 @@
         '<td class="align-right">' + AO.UI.profitCell(a.profit) + '</td></tr>';
     }).join('');
 
+    // --- "My prices": per-item overrides for stale market data
+    var ov = AO.Settings.data.priceOverrides || {};
+    var myPrices = '<div class="detail-block"><h4>My prices ' +
+      '<span class="tip" title="Enter your own price to override stale or missing market data. ' +
+      'It applies instantly to every calculation across all tabs. Leave blank to use the market.">?</span></h4>' +
+      '<div class="mp-grid">' +
+      mpInput(row.itemId, 'sell', AO.UI.itemName(row.itemId), 'sell') +
+      row.materials.map(function (m) {
+        return mpInput(m.id, 'buy', AO.UI.itemName(m.id), 'buy');
+      }).join('') +
+      '</div>' +
+      '<button class="btn mp-clear" data-items="' +
+      AO.UI.escape([row.itemId].concat(row.materials.map(function (m) { return m.id; })).join(',')) +
+      '">Clear these overrides</button></div>';
+
+    // --- traded volume (lazy: filled in after the panel is in the DOM)
+    var volId = 'vol-' + AO.Api.hash(row.itemId);
+    var volume = '<div class="detail-block"><h4>Traded volume ' +
+      '<span class="tip" title="Average units traded per day and per week across the tracked ' +
+      'royal cities, from the price-history charts. Low volume means an illiquid market — a high ' +
+      'paper profit there may be hard to actually realise.">?</span></h4>' +
+      '<div id="' + volId + '" class="muted">Loading volume…</div></div>';
+    loadVolume(volId, row.itemId, s.activeCities);
+
     return '<div class="detail-grid">' +
       '<div class="detail-block detail-block-wide"><h4>Materials (optimal sourcing vs local)</h4>' +
       '<div class="mini-scroll"><table class="mini-table"><thead><tr><th>Material</th>' +
@@ -258,13 +298,18 @@
       line('− Material cost', -row.materialCost) +
       line('− Crafting station fee', -row.craftFee) +
       line('+ Returned resources', row.returnedValue) +
-      '<tr class="total-row"><td>= Profit per item</td><td class="align-right">' +
-      AO.UI.profitCell(row.profit) + '</td></tr>' +
+      '<tr class="total-row"><td>= Profit per craft' +
+      (row.yield > 1 ? ' <span class="muted">(yields ' + row.yield + ')</span>' : '') +
+      '</td><td class="align-right">' + AO.UI.profitCell(row.profit) + '</td></tr>' +
+      (row.yield > 1 ? '<tr><td>= Profit per unit</td><td class="align-right">' +
+        AO.UI.profitCell(row.profitPerUnit) + '</td></tr>' : '') +
       '</tbody></table></div>' +
-      '<div class="muted">Per 100: ' + AO.UI.silver(row.profitPer100) +
+      '<div class="muted">Per 100 crafts: ' + AO.UI.silver(row.profitPer100) +
       ' · Per 1000: ' + AO.UI.silver(row.profitPer1000) +
       (row.focusCost ? ' · Per focus: ' + (row.profitPerFocus || 0).toFixed(1) : '') + '</div>' +
       '</div>' +
+
+      volume +
 
       '<div class="detail-block"><h4>Resource return ' +
       '<span class="tip" title="RRR = base rate (city bonus × focus matrix) × (1 + premium bonus) + mastery bonus">?</span></h4>' +
@@ -283,6 +328,8 @@
       '<th class="align-right">Fee</th><th class="align-right">Profit</th></tr></thead>' +
       '<tbody>' + alts + '</tbody></table></div></div>' +
 
+      myPrices +
+
       '<div class="detail-actions">' +
       '<button class="btn copy-btn" data-copy="' + AO.UI.escape(plainText(row)) + '">📋 Copy calculation</button>' +
       '</div></div>';
@@ -291,6 +338,37 @@
       return '<tr><td>' + AO.UI.escape(label) + '</td><td class="align-right">' +
         AO.UI.exact(value) + '</td></tr>';
     }
+  }
+
+  /** One labelled manual-price input for the detail panel. */
+  function mpInput(id, kind, name, verb) {
+    var ov = AO.Settings.data.priceOverrides[id];
+    var cur = ov && ov[kind] ? ov[kind] : '';
+    return '<label class="mp-row"><span class="mp-name">' + AO.UI.icon(id, 20) + ' ' +
+      AO.UI.escape(name) + '<em>' + verb + '</em></span>' +
+      '<input class="mp-input" type="number" min="0" step="1" placeholder="market" ' +
+      'data-item="' + AO.UI.escape(id) + '" data-kind="' + kind + '" value="' + cur + '"></label>';
+  }
+
+  /** Lazily fill a volume placeholder once it is in the DOM. */
+  function loadVolume(elId, itemId, cities) {
+    setTimeout(function () {
+      if (!document.getElementById(elId)) return;
+      var royal = cities.filter(function (c) { return c !== AO.BLACK_MARKET; });
+      AO.Api.itemVolume(itemId, royal, 7).then(function (v) {
+        var el = document.getElementById(elId);
+        if (!el) return;
+        if (v.perDay == null || !v.days) {
+          el.innerHTML = '<span class="muted">No recent trade history for this item.</span>';
+          return;
+        }
+        var perDay = Math.round(v.perDay), perWeek = Math.round(v.perWeek);
+        var liq = perDay < 20 ? ' <span class="pill pill-warn">thin market</span>' : '';
+        el.innerHTML = '~<strong>' + AO.UI.exact(perDay) + '</strong> sold/day · ~<strong>' +
+          AO.UI.exact(perWeek) + '</strong>/week' + liq +
+          '<div class="muted small">market-wide average over the last ' + v.days + ' days</div>';
+      });
+    }, 0);
   }
 
   function plainText(row) {
@@ -418,6 +496,7 @@
     ]);
 
     this.tables.crafting = new AO.UI.DataTable(host, {
+      expanded: App.expandedState.crafting,
       columns: craftColumns(),
       rows: shown,
       defaultSort: 'profit',
@@ -457,6 +536,7 @@
     ]);
 
     this.tables.refining = new AO.UI.DataTable(host, {
+      expanded: App.expandedState.refining,
       columns: cols,
       rows: shown,
       defaultSort: 'profit',
@@ -481,6 +561,7 @@
     ]);
 
     this.tables.cooking = new AO.UI.DataTable(host, {
+      expanded: App.expandedState.cooking,
       columns: craftColumns(),
       rows: shown,
       defaultSort: 'profit',
@@ -554,6 +635,7 @@
     this.tables.transport = new AO.UI.DataTable(document.getElementById('transport-table'), {
       columns: cols,
       rows: rows,
+      expanded: App.expandedState.transport,
       defaultSort: 'profit',
       detail: function (r) { return transportDetail(r, self); },
       emptyMessage: 'No profitable routes at the current transport cost. Try lowering it in Settings.'
@@ -649,6 +731,7 @@
     this.tables.focus = new AO.UI.DataTable(document.getElementById('focus-table'), {
       columns: cols,
       rows: ranked,
+      expanded: App.expandedState.focus,
       defaultSort: 'profitPerFocus',
       detail: function (r) { return detailPanel(r.row); },
       emptyMessage: 'No focus activities available. Enable focus usage in Settings.'
@@ -819,6 +902,9 @@
         Array.prototype.forEach.call(document.querySelectorAll('.tab-panel'), function (p) {
           p.hidden = p.id !== 'tab-' + target;
         });
+        // Rebuild Settings on open so the "My prices" list reflects overrides
+        // added from the calculator tabs since it was last rendered.
+        if (target === 'settings') renderSettings();
         location.hash = target;
       });
     });
@@ -897,6 +983,8 @@
         return slider('refineMastery.' + k, prettyCategory(k), s.refineMastery[k]);
       })) +
 
+      myPricesSection(s.priceOverrides) +
+
       '<div class="settings-actions">' +
       '<button class="btn btn-primary" id="settings-apply">Apply &amp; recalculate</button>' +
       '<button class="btn" id="settings-clear-cache">Clear price cache</button>' +
@@ -936,6 +1024,53 @@
       App.load(false);
       AO.UI.toast('Settings reset to defaults');
     });
+
+    // My-prices management: remove one, or clear all.
+    Array.prototype.forEach.call(host.querySelectorAll('.mp-del'), function (btn) {
+      btn.addEventListener('click', function () {
+        delete AO.Settings.data.priceOverrides[btn.getAttribute('data-item')];
+        AO.Settings.save();
+        App.reapplyPrices();
+        renderSettings();
+      });
+    });
+    var clearAll = document.getElementById('mp-clear-all');
+    if (clearAll) clearAll.addEventListener('click', function () {
+      AO.Settings.data.priceOverrides = {};
+      AO.Settings.save();
+      App.reapplyPrices();
+      renderSettings();
+      AO.UI.toast('All manual prices cleared');
+    });
+  }
+
+  /** Settings section listing every manual price override with remove controls. */
+  function myPricesSection(overrides) {
+    var ids = Object.keys(overrides || {}).filter(function (id) {
+      var o = overrides[id];
+      return o && (o.buy || o.sell);
+    });
+    var body;
+    if (!ids.length) {
+      body = '<p class="muted small">No manual prices set. Expand any row in a calculator tab ' +
+        'and use the <strong>My prices</strong> box to override stale or missing market data for ' +
+        'an item — it then applies everywhere.</p>';
+    } else {
+      body = '<div class="mp-manage">' + ids.map(function (id) {
+        var o = overrides[id];
+        return '<div class="mp-manage-row"><span>' + AO.UI.icon(id, 20) + ' ' +
+          AO.UI.escape(AO.UI.itemName(id)) + '</span>' +
+          '<span class="muted">' + (o.buy ? 'buy ' + AO.UI.exact(o.buy) : '') + '</span>' +
+          '<span class="muted">' + (o.sell ? 'sell ' + AO.UI.exact(o.sell) : '') + '</span>' +
+          '<button class="mp-del" data-item="' + AO.UI.escape(id) + '" title="Remove">✕</button></div>';
+      }).join('') + '</div>' +
+        '<button class="btn btn-danger" id="mp-clear-all" style="margin-top:10px">Clear all ' +
+        ids.length + ' overrides</button>';
+    }
+    return '<section class="settings-section"><h3>My prices' +
+      (ids.length ? ' (' + ids.length + ')' : '') + ' ' +
+      '<span class="tip" title="Prices you entered by hand. They override stale market data ' +
+      'in every calculation. Fresh, never treated as stale.">?</span></h3>' + body + '</section>';
   }
 
   var scheduleRecompute = AO.UI.debounce(function () {
@@ -1003,6 +1138,39 @@
       if (!btn) return;
       e.stopPropagation();
       AO.UI.copy(btn.getAttribute('data-copy') || '');
+    });
+
+    // Delegated "Clear these overrides" buttons.
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('.mp-clear');
+      if (!btn) return;
+      e.stopPropagation();
+      (btn.getAttribute('data-items') || '').split(',').forEach(function (id) {
+        delete AO.Settings.data.priceOverrides[id];
+      });
+      AO.Settings.save();
+      App.reapplyPrices();
+      AO.UI.toast('Overrides cleared');
+    });
+
+    // Delegated manual-price inputs (debounced so typing does not thrash).
+    var onMpInput = AO.UI.debounce(function (input) {
+      var id = input.getAttribute('data-item');
+      var kind = input.getAttribute('data-kind');
+      var val = parseFloat(input.value);
+      var store = AO.Settings.data.priceOverrides;
+      if (!store[id]) store[id] = {};
+      if (isFinite(val) && val > 0) store[id][kind] = val;
+      else {
+        delete store[id][kind];
+        if (!store[id].buy && !store[id].sell) delete store[id];
+      }
+      AO.Settings.save();
+      App.reapplyPrices();
+    }, 500);
+    document.addEventListener('input', function (e) {
+      var input = e.target.closest && e.target.closest('.mp-input');
+      if (input) onMpInput(input);
     });
 
     // Keep the "x minutes ago" badges honest without a full re-render.

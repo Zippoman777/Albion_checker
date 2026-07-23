@@ -187,6 +187,32 @@
     });
   };
 
+  /**
+   * Recently-traded volume for an item, summed from the daily history charts.
+   * @returns {Promise<{perDay:number, perWeek:number, days:number, byCity:object}>}
+   */
+  Api.itemVolume = function (itemId, locations, daysBack) {
+    daysBack = daysBack || 7;
+    return Api.getHistory(itemId, locations, daysBack + 1).then(function (rows) {
+      var byCity = Object.create(null);
+      var total = 0;
+      var maxDays = 0;
+      (rows || []).forEach(function (r) {
+        var d = r.data;
+        if (!d || !d.item_count) return;
+        var counts = d.item_count.slice(-daysBack);
+        var sum = counts.reduce(function (a, b) { return a + (b || 0); }, 0);
+        byCity[r.location] = (byCity[r.location] || 0) + sum;
+        total += sum;
+        if (counts.length > maxDays) maxDays = counts.length;
+      });
+      var days = maxDays || daysBack;
+      return { perDay: total / days, perWeek: (total / days) * 7, days: days, byCity: byCity };
+    }).catch(function () {
+      return { perDay: null, perWeek: null, days: 0, byCity: {} };
+    });
+  };
+
   /** The item name dump, cached for a week. */
   Api.getItemNames = function () {
     return AO.Cache.get('itemnames', 7 * 86400000).then(function (cached) {

@@ -467,6 +467,20 @@ main { padding: 16px 18px 40px; max-width: 1800px; margin: 0 auto; }
 
 .sourcing-note { margin-top: 7px; font-size: 12px; color: var(--text-dim); }
 
+/* manual price inputs */
+.mp-grid { display: grid; gap: 5px; margin-bottom: 8px; }
+.mp-row { display: grid; grid-template-columns: 1fr 96px; align-items: center; gap: 8px; font-size: 12.5px; }
+.mp-name { display: flex; align-items: center; gap: 4px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-name em { color: var(--gold-dim); font-style: normal; margin-left: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+.mp-input { width: 100%; padding: 4px 7px; font-size: 12.5px; }
+.mp-clear { margin-top: 2px; font-size: 12px; padding: 4px 10px; }
+.pill-warn { color: var(--orange); border-color: var(--orange); background: rgba(217, 140, 58, 0.12); }
+
+.mp-manage { display: grid; gap: 6px; }
+.mp-manage-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center;
+  font-size: 12.5px; padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
+.mp-manage-row .mp-del { cursor: pointer; color: var(--red); border: none; background: none; font-size: 14px; }
+
 .detail-actions { grid-column: 1 / -1; }
 
 .quality-bars { margin-top: 6px; display: grid; gap: 3px; }

@@ -44,6 +44,7 @@
       useSellOrdersForMaterials: true, // buy instantly off sell orders
       useBuyOrdersForSales: false,    // sell instantly into buy orders
       recipeOverrides: {},
+      priceOverrides: {},           // itemId -> { buy, sell } manual prices
       fishSauce: false,
       fishSaucePrice: 2000,
       cacheTtlMinutes: 15

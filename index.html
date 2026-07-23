@@ -10,7 +10,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2312100d'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23d4af37'%3E%E2%9A%92%3C/text%3E%3C/svg%3E">
 <!-- ?v= is the build stamp: bump it on release so caches (browser + service
      worker) can never serve a stale mix of old and new modules. -->
-<link rel="stylesheet" href="css/styles.css?v=6">
+<link rel="stylesheet" href="css/styles.css?v=10">
 </head>
 <body>
 
@@ -137,10 +137,11 @@
         <code>(sell price × quality multiplier − setup fee − sales fee) − (material cost + station fee) + returned resource value</code>.
         Materials are priced at the cheapest city that has a fresh enough quote; the product is
         priced at the best city including the Black Market.</p>
-      <p class="muted small">Refining recipes are exact. Equipment and cooking recipes use
-        per-slot templates — accurate in shape, and every one can be overridden per item id via
-        <code>recipeOverrides</code> in your saved settings. Station fees are modelled as
-        silver-per-100-item-value, which is how the in-game station tax actually behaves.</p>
+      <p class="muted small">Crafting, cooking and refining recipes come straight from the
+        official game data (ao-bin-dumps): exact materials, real focus cost, and the real amount
+        produced per craft (potions yield 5, etc.). Prices are player-uploaded and can be stale —
+        set your own with <strong>My Prices</strong> in Settings to override them. Station fees
+        are modelled as silver-per-100-item-value, which is how the in-game station tax behaves.</p>
     </div>
     <div id="settings-body"></div>
   </section>
@@ -154,12 +155,13 @@
 
 <div id="toast-host" class="toast-host" aria-live="polite"></div>
 
-<script src="js/config.js?v=6"></script>
-<script src="js/store.js?v=6"></script>
-<script src="js/recipes.js?v=6"></script>
-<script src="js/api.js?v=6"></script>
-<script src="js/calc.js?v=6"></script>
-<script src="js/ui.js?v=6"></script>
-<script src="js/app.js?v=6"></script>
+<script src="js/config.js?v=10"></script>
+<script src="js/store.js?v=10"></script>
+<script src="js/recipes-data.js?v=10"></script>
+<script src="js/recipes.js?v=10"></script>
+<script src="js/api.js?v=10"></script>
+<script src="js/calc.js?v=10"></script>
+<script src="js/ui.js?v=10"></script>
+<script src="js/app.js?v=10"></script>
 </body>
 </html>
