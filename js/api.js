@@ -213,6 +213,65 @@
     });
   };
 
+  /**
+   * Batch-fetch recently-traded volume for many items at once (same chunking
+   * strategy as getPrices — the charts endpoint accepts comma-separated ids).
+   * @returns {Promise<object>} map itemId -> { perDay, perWeek, days }
+   */
+  Api.getVolumes = function (itemIds, locations, opts) {
+    opts = opts || {};
+    var daysBack = 7;
+    var since = new Date(Date.now() - (daysBack + 1) * 86400000);
+    var date = (since.getUTCMonth() + 1) + '-' + since.getUTCDate() + '-' + since.getUTCFullYear();
+    var locParam = locations.map(function (l) { return AO.LOCATION_QUERY[l] || l; }).join(',');
+    var base = AO.API_BASE + '/api/v2/stats/charts/';
+    var suffix = '.json?date=' + date + '&locations=' + encodeURIComponent(locParam) +
+      '&qualities=1&time-scale=24';
+    var baseLen = base.length + suffix.length;
+
+    var unique = dedupe(itemIds);
+    var chunks = chunkIds(unique, baseLen);
+    var acc = Object.create(null); // id -> { total, days }
+    var done = 0;
+
+    return chunks.reduce(function (chain, chunk) {
+      return chain.then(function () {
+        var url = base + chunk.map(encodeURIComponent).join(',') + suffix;
+        var cacheKey = 'vol:' + hash(url);
+        return AO.Cache.get(cacheKey, 60 * 60 * 1000).then(function (cached) {
+          if (cached) { Api.stats.cacheHits++; return cached.value; }
+          return fetchJson(url).then(function (data) {
+            AO.Cache.put(cacheKey, data);
+            return data;
+          });
+        }).then(function (rows) {
+          (rows || []).forEach(function (r) {
+            var d = r.data;
+            if (!d || !d.item_count || !r.item_id) return;
+            var counts = d.item_count.slice(-daysBack);
+            var sum = counts.reduce(function (a, b) { return a + (b || 0); }, 0);
+            if (!acc[r.item_id]) acc[r.item_id] = { total: 0, days: 0 };
+            acc[r.item_id].total += sum;
+            if (counts.length > acc[r.item_id].days) acc[r.item_id].days = counts.length;
+          });
+        }).catch(function (err) {
+          console.warn('Volume chunk failed:', err.message);
+        }).then(function () {
+          done++;
+          if (opts.onProgress) opts.onProgress(done, chunks.length);
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      var out = Object.create(null);
+      Object.keys(acc).forEach(function (id) {
+        var a = acc[id];
+        var days = a.days || daysBack;
+        out[id] = { perDay: a.total / days, perWeek: (a.total / days) * 7, days: days };
+      });
+      return out;
+    });
+  };
+
   /** The item name dump, cached for a week. */
   Api.getItemNames = function () {
     return AO.Cache.get('itemnames', 7 * 86400000).then(function (cached) {

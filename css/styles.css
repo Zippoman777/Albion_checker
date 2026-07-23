@@ -473,8 +473,12 @@ main { padding: 16px 18px 40px; max-width: 1800px; margin: 0 auto; }
 .mp-name { display: flex; align-items: center; gap: 4px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mp-name em { color: var(--gold-dim); font-style: normal; margin-left: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
 .mp-input { width: 100%; padding: 4px 7px; font-size: 12.5px; }
-.mp-clear { margin-top: 2px; font-size: 12px; padding: 4px 10px; }
+.mp-clear { font-size: 12px; padding: 4px 10px; }
+.mp-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.mp-actions .btn { font-size: 12px; padding: 4px 12px; }
+.mp-hint { flex: 1 1 100%; }
 .pill-warn { color: var(--orange); border-color: var(--orange); background: rgba(217, 140, 58, 0.12); }
+.vol-thin { color: var(--orange); }
 
 .mp-manage { display: grid; gap: 6px; }
 .mp-manage-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center;

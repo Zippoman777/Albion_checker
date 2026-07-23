@@ -14,6 +14,8 @@
     expandedState: { crafting: {}, refining: {}, cooking: {}, transport: {}, focus: {} },
     recipes: { crafting: [], refining: [], cooking: [] },
     results: { crafting: [], refining: [], cooking: [], transport: [], focus: [], journals: [] },
+    volumes: Object.create(null),   // itemId -> { perDay, perWeek } once loaded
+    volumesLoading: false,
     loading: false,
     lastError: null
   };
@@ -266,9 +268,13 @@
         return mpInput(m.id, 'buy', AO.UI.itemName(m.id), 'buy');
       }).join('') +
       '</div>' +
+      '<div class="mp-actions">' +
+      '<button class="btn btn-primary mp-apply">Calculate</button>' +
       '<button class="btn mp-clear" data-items="' +
       AO.UI.escape([row.itemId].concat(row.materials.map(function (m) { return m.id; })).join(',')) +
-      '">Clear these overrides</button></div>';
+      '">Clear these</button>' +
+      '<span class="mp-hint muted small">Prices save as you type; click Calculate to apply.</span>' +
+      '</div></div>';
 
     // --- traded volume (lazy: filled in after the panel is in the DOM)
     var volId = 'vol-' + AO.Api.hash(row.itemId);
@@ -355,7 +361,10 @@
     setTimeout(function () {
       if (!document.getElementById(elId)) return;
       var royal = cities.filter(function (c) { return c !== AO.BLACK_MARKET; });
-      AO.Api.itemVolume(itemId, royal, 7).then(function (v) {
+      // Reuse a batch-loaded figure if the user already hit "Load sold volumes".
+      var cached = App.volumes[itemId];
+      var promise = cached ? Promise.resolve(cached) : AO.Api.itemVolume(itemId, royal, 7);
+      promise.then(function (v) {
         var el = document.getElementById(elId);
         if (!el) return;
         if (v.perDay == null || !v.days) {
@@ -442,10 +451,54 @@
           return r.profitPerFocus == null ? '—' : r.profitPerFocus.toFixed(1);
         },
         csv: function (r) { return r.profitPerFocus == null ? '' : r.profitPerFocus.toFixed(2); } },
+      { key: 'volume', label: 'Sold/day', align: 'right',
+        tip: 'Average units of the finished item sold per day (last 7d). Use "Load sold volumes" to populate; sort by it to find liquid markets.',
+        render: function (r) {
+          var v = App.volumes[r.itemId];
+          if (!v || v.perDay == null) return '<span class="muted">—</span>';
+          var pd = Math.round(v.perDay);
+          return '<span class="' + (pd < 20 ? 'vol-thin' : 'profit-pos') + '" title="~' +
+            Math.round(v.perWeek) + '/week">' + AO.UI.exact(pd) + '</span>';
+        },
+        sortValue: function (r) { var v = App.volumes[r.itemId]; return v ? v.perDay : -1; },
+        csv: function (r) { var v = App.volumes[r.itemId]; return v ? Math.round(v.perDay) : ''; } },
       { key: 'dataAge', label: 'Data age (min)', tip: 'Age of the oldest quote used in this row',
         render: function (r) { return AO.UI.ageBadge(r.dataAge); }, csv: round0('dataAge') }
     ];
   }
+
+  /**
+   * Batch-load sold-volume for every item in a calculator tab, then re-render
+   * so the "Sold/day" column fills in. Opt-in — it roughly doubles the API
+   * traffic of a page load, so it runs only when the user asks.
+   */
+  App.loadVolumes = function (tab) {
+    if (this.volumesLoading) return;
+    var rows = this.results[tab] || [];
+    var ids = rows.map(function (r) { return r.itemId; });
+    if (!ids.length) return;
+    this.volumesLoading = true;
+    var btn = document.getElementById(tab + '-volumes');
+    if (btn) { btn.disabled = true; btn.textContent = '📊 Loading… 0%'; }
+    var royal = AO.Settings.activeCities().filter(function (c) { return c !== AO.BLACK_MARKET; });
+
+    AO.Api.getVolumes(ids, royal, {
+      onProgress: function (done, total) {
+        if (btn) btn.textContent = '📊 Loading… ' + Math.round(done / total * 100) + '%';
+      }
+    }).then(function (map) {
+      Object.assign(App.volumes, map);
+      App.volumesLoading = false;
+      if (btn) { btn.disabled = false; btn.textContent = '📊 Reload volumes'; }
+      var fn = 'render' + tab.charAt(0).toUpperCase() + tab.slice(1);
+      if (App[fn]) App[fn]();
+      AO.UI.toast('Sold volumes loaded — sort by the Sold/day column');
+    }).catch(function (err) {
+      App.volumesLoading = false;
+      if (btn) { btn.disabled = false; btn.textContent = '📊 Load sold volumes'; }
+      AO.UI.toast('Could not load volumes: ' + (err.message || err), 'err');
+    });
+  };
 
   /** CSV helper: emit a plain rounded integer rather than a float or a label. */
   function round0(key) {
@@ -819,6 +872,12 @@
     var cat = document.getElementById(tab + '-category');
     var csv = document.getElementById(tab + '-csv');
     var copy = document.getElementById(tab + '-copy');
+    var vol = document.getElementById(tab + '-volumes');
+
+    if (vol && !vol._wired) {
+      vol._wired = true;
+      vol.addEventListener('click', function () { App.loadVolumes(tab); });
+    }
 
     if (search && !search._wired) {
       search._wired = true;
@@ -1153,7 +1212,9 @@
       AO.UI.toast('Overrides cleared');
     });
 
-    // Delegated manual-price inputs (debounced so typing does not thrash).
+    // Manual-price inputs: save as the user types, but DON'T recalculate —
+    // that re-sorts the tables and makes the expanded row jump around. The
+    // "Calculate" button applies everything at once.
     var onMpInput = AO.UI.debounce(function (input) {
       var id = input.getAttribute('data-item');
       var kind = input.getAttribute('data-kind');
@@ -1166,11 +1227,33 @@
         if (!store[id].buy && !store[id].sell) delete store[id];
       }
       AO.Settings.save();
-      App.reapplyPrices();
-    }, 500);
+    }, 400);
     document.addEventListener('input', function (e) {
       var input = e.target.closest && e.target.closest('.mp-input');
       if (input) onMpInput(input);
+    });
+
+    // "Calculate": apply the manual prices and recompute, on demand.
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('.mp-apply');
+      if (!btn) return;
+      e.stopPropagation();
+      // Flush any input still inside its debounce window before applying.
+      var panel = btn.closest('.detail-block');
+      if (panel) {
+        Array.prototype.forEach.call(panel.querySelectorAll('.mp-input'), function (input) {
+          var id = input.getAttribute('data-item');
+          var kind = input.getAttribute('data-kind');
+          var val = parseFloat(input.value);
+          var store = AO.Settings.data.priceOverrides;
+          if (!store[id]) store[id] = {};
+          if (isFinite(val) && val > 0) store[id][kind] = val;
+          else { delete store[id][kind]; if (!store[id].buy && !store[id].sell) delete store[id]; }
+        });
+        AO.Settings.save();
+      }
+      App.reapplyPrices();
+      AO.UI.toast('Recalculated with your prices');
     });
 
     // Keep the "x minutes ago" badges honest without a full re-render.
