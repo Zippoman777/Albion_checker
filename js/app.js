@@ -947,6 +947,16 @@
       }
     }
 
+    var manual = document.getElementById(tab + '-manual');
+    if (manual) {
+      if (!manual._wired) {
+        manual._wired = true;
+        manual.addEventListener('change', function () { App.tables[tab].setManualOnly(manual.checked); });
+      }
+      // Preserve the checkbox state across re-renders (e.g. after Calculate).
+      if (manual.checked) table.setManualOnly(true);
+    }
+
     var tierSel = document.getElementById(tab + '-tier');
     if (tierSel) {
       var tiers = distinctTiers(table.allRows);

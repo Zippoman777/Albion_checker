@@ -242,6 +242,12 @@
       ? settings.useFocusRefining
       : settings.useFocusCrafting;
 
+    // Does this recipe involve any hand-entered price (product or an input)?
+    var ov = settings.priceOverrides || {};
+    function hasOverride(id) { var o = ov[id]; return !!(o && (o.buy || o.sell)); }
+    var usesManual = hasOverride(recipe.resultId) ||
+      recipe.materials.some(function (m) { return hasOverride(m.id); });
+
     // --- materials, sourced optimally and locally
     var optimalTotal = 0;
     var localTotal = 0;
@@ -329,6 +335,7 @@
 
       focusCost: focusCost,
       useFocus: useFocus,
+      usesManual: usesManual,
       profit: profit,                 // per craft (a craft can yield >1 item)
       yield: recipe.resultQty || 1,
       profitPerUnit: profit / (recipe.resultQty || 1),
@@ -465,6 +472,8 @@
         profit: profit,
         margin: margin,
         dataAge: Math.max(cheapest.ageMinutes || 0, dearest.ageMinutes || 0),
+        usesManual: !!((settings.priceOverrides || {})[id] &&
+          ((settings.priceOverrides[id].buy) || (settings.priceOverrides[id].sell))),
         // Cheap, high-margin goods move in bulk; expensive gear does not.
         bulk: cheapest.price < 20000
       });

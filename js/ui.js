@@ -96,6 +96,7 @@
     this.filterText = '';
     this.categoryFilter = '';
     this.tierFilter = '';
+    this.manualOnly = false;
     // A caller can pass a shared map so expansion survives a full re-render.
     this.expanded = opts.expanded || Object.create(null);
     this.pageSize = opts.pageSize || 100;
@@ -142,6 +143,12 @@
     this.render();
   };
 
+  DataTable.prototype.setManualOnly = function (on) {
+    this.manualOnly = !!on;
+    this.page = 0;
+    this.render();
+  };
+
   /**
    * Bring the row for `itemId` into view: switch to its page, optionally keep
    * it expanded, scroll it to the middle and flash it so the eye can follow it
@@ -170,6 +177,7 @@
     var rows = this.allRows.filter(function (r) {
       if (self.categoryFilter && String(r.category || '') !== self.categoryFilter) return false;
       if (self.tierFilter && String(r.tier) !== self.tierFilter) return false;
+      if (self.manualOnly && !r.usesManual) return false;
       if (!self.filterText) return true;
       var hay = ((r.name || '') + ' ' + (r.itemId || '') + ' ' +
         UI.itemName(r.itemId) + ' ' + (r.craftCity || '') + ' ' +
