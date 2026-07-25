@@ -530,6 +530,27 @@
     }).join('');
   }
 
+  // Per-tab expansion maps, kept outside the table instances so an expanded row
+  // stays open across re-renders (e.g. after applying manual prices).
+  App._expanded = {};
+
+  /**
+   * Create the tab's table on first render, then reuse it on later renders via
+   * update() — preserving sort, filters, page and which row is expanded.
+   */
+  function mountTable(tab, host, opts) {
+    if (!App._expanded[tab]) App._expanded[tab] = Object.create(null);
+    opts.expanded = App._expanded[tab];
+    var t = App.tables[tab];
+    if (t) {
+      t.host = host;
+      t.update(opts);
+    } else {
+      App.tables[tab] = new AO.UI.DataTable(host, opts);
+    }
+    return App.tables[tab];
+  }
+
   App.renderCrafting = function () {
     var rows = this.results.crafting;
     var host = document.getElementById('crafting-table');
@@ -548,7 +569,7 @@
       { label: 'Best silver / focus', value: bestBy(rows, 'profitPerFocus', function (v) { return v.toFixed(1); }) }
     ]);
 
-    this.tables.crafting = new AO.UI.DataTable(host, {
+    mountTable('crafting', host, {
       expanded: App.expandedState.crafting,
       columns: craftColumns(),
       rows: shown,
@@ -588,7 +609,7 @@
         }).length }
     ]);
 
-    this.tables.refining = new AO.UI.DataTable(host, {
+    mountTable('refining', host, {
       expanded: App.expandedState.refining,
       columns: cols,
       rows: shown,
@@ -613,7 +634,7 @@
       { label: 'Cooking bonus city', value: AO.CRAFT_BONUS_CITY.FOOD }
     ]);
 
-    this.tables.cooking = new AO.UI.DataTable(host, {
+    mountTable('cooking', host, {
       expanded: App.expandedState.cooking,
       columns: craftColumns(),
       rows: shown,
@@ -685,7 +706,7 @@
         render: function (r) { return AO.UI.ageBadge(r.dataAge); } }
     ];
 
-    this.tables.transport = new AO.UI.DataTable(document.getElementById('transport-table'), {
+    mountTable('transport', document.getElementById('transport-table'), {
       columns: cols,
       rows: rows,
       expanded: App.expandedState.transport,
@@ -781,7 +802,7 @@
         render: function (r) { return AO.UI.profitCell(r.dailySilver); } }
     ];
 
-    this.tables.focus = new AO.UI.DataTable(document.getElementById('focus-table'), {
+    mountTable('focus', document.getElementById('focus-table'), {
       columns: cols,
       rows: ranked,
       expanded: App.expandedState.focus,
@@ -859,6 +880,12 @@
     return best == null ? '—' : '<span class="profit-pos">' + fmt(best) + '</span>';
   }
 
+  function distinctTiers(rows) {
+    var seen = Object.create(null);
+    rows.forEach(function (r) { if (r.tier != null) seen[r.tier] = true; });
+    return Object.keys(seen).map(Number).sort(function (a, b) { return a - b; });
+  }
+
   function categoriesOf(rows) {
     var seen = Object.create(null);
     rows.forEach(function (r) { if (r.category) seen[r.category] = true; });
@@ -902,6 +929,27 @@
         if (current) table.setCategory(current);
       }
     }
+
+    var tierSel = document.getElementById(tab + '-tier');
+    if (tierSel) {
+      var tiers = distinctTiers(table.allRows);
+      if (!tiers.length) {
+        tierSel.hidden = true;
+      } else {
+        tierSel.hidden = false;
+        var curTier = tierSel.value;
+        tierSel.innerHTML = '<option value="">All tiers</option>' + tiers.map(function (t) {
+          return '<option value="' + t + '"' + (String(t) === curTier ? ' selected' : '') +
+            '>Tier ' + t + '</option>';
+        }).join('');
+        if (!tierSel._wired) {
+          tierSel._wired = true;
+          tierSel.addEventListener('change', function () { App.tables[tab].setTier(tierSel.value); });
+        }
+        if (curTier) table.setTier(curTier);
+      }
+    }
+
     if (csv && !csv._wired) {
       csv._wired = true;
       csv.addEventListener('click', function () {
@@ -1240,6 +1288,7 @@
       e.stopPropagation();
       // Flush any input still inside its debounce window before applying.
       var panel = btn.closest('.detail-block');
+      var detailRow = btn.closest('.detail-row');
       if (panel) {
         Array.prototype.forEach.call(panel.querySelectorAll('.mp-input'), function (input) {
           var id = input.getAttribute('data-item');
@@ -1252,7 +1301,15 @@
         });
         AO.Settings.save();
       }
+      // Which item + tab is being edited, so we can keep it in view afterwards.
+      var sellInput = detailRow && detailRow.querySelector('.mp-input[data-kind="sell"]');
+      var itemId = sellInput ? sellInput.getAttribute('data-item') : null;
+      var section = btn.closest('.tab-panel');
+      var tab = section ? section.id.replace('tab-', '') : null;
+
       App.reapplyPrices();
+      // Re-open the row and scroll it back so the user never loses their place.
+      if (tab && itemId && App.tables[tab]) App.tables[tab].focusItem(itemId, true);
       AO.UI.toast('Recalculated with your prices');
     });
 

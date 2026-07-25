@@ -95,6 +95,7 @@
     this.sortDir = opts.defaultDir || -1;
     this.filterText = '';
     this.categoryFilter = '';
+    this.tierFilter = '';
     // A caller can pass a shared map so expansion survives a full re-render.
     this.expanded = opts.expanded || Object.create(null);
     this.pageSize = opts.pageSize || 100;
@@ -105,6 +106,21 @@
   DataTable.prototype.setRows = function (rows) {
     this.allRows = rows || [];
     this.page = 0;
+    this.render();
+  };
+
+  /**
+   * Refresh columns/rows/detail in place, PRESERVING sort, filters, page and
+   * expansion. Used when the data changes (e.g. after applying manual prices)
+   * so the user's expanded row and scroll position are not thrown away.
+   */
+  DataTable.prototype.update = function (opts) {
+    if (opts.columns) this.columns = opts.columns;
+    this.allRows = opts.rows || [];
+    if (opts.detail !== undefined) this.detail = opts.detail;
+    if (opts.emptyMessage) this.emptyMessage = opts.emptyMessage;
+    var maxPage = Math.max(0, Math.ceil(this.visibleRows().length / this.pageSize) - 1);
+    if (this.page > maxPage) this.page = maxPage;
     this.render();
   };
 
@@ -120,10 +136,40 @@
     this.render();
   };
 
+  DataTable.prototype.setTier = function (tier) {
+    this.tierFilter = tier ? String(tier) : '';
+    this.page = 0;
+    this.render();
+  };
+
+  /**
+   * Bring the row for `itemId` into view: switch to its page, optionally keep
+   * it expanded, scroll it to the middle and flash it so the eye can follow it
+   * after the table re-sorts.
+   */
+  DataTable.prototype.focusItem = function (itemId, expand) {
+    var rows = this.visibleRows();
+    var idx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].itemId === itemId) { idx = i; break; }
+    }
+    if (idx < 0) return;
+    if (expand) this.expanded[rowKey(rows[idx])] = true;
+    this.page = Math.floor(idx / this.pageSize);
+    this.render();
+    var el = this.host.querySelector('.data-row[data-idx="' + idx + '"]');
+    if (el) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.classList.add('row-flash');
+      setTimeout(function () { el.classList.remove('row-flash'); }, 1600);
+    }
+  };
+
   DataTable.prototype.visibleRows = function () {
     var self = this;
     var rows = this.allRows.filter(function (r) {
       if (self.categoryFilter && String(r.category || '') !== self.categoryFilter) return false;
+      if (self.tierFilter && String(r.tier) !== self.tierFilter) return false;
       if (!self.filterText) return true;
       var hay = ((r.name || '') + ' ' + (r.itemId || '') + ' ' +
         UI.itemName(r.itemId) + ' ' + (r.craftCity || '') + ' ' +

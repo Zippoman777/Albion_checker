@@ -480,6 +480,13 @@ main { padding: 16px 18px 40px; max-width: 1800px; margin: 0 auto; }
 .pill-warn { color: var(--orange); border-color: var(--orange); background: rgba(217, 140, 58, 0.12); }
 .vol-thin { color: var(--orange); }
 
+/* Brief highlight so the eye can follow a row after the table re-sorts. */
+.data-row.row-flash > td { animation: rowflash 1.6s ease-out; }
+@keyframes rowflash {
+  0%, 20% { background: rgba(212, 175, 55, 0.38); }
+  100% { background: transparent; }
+}
+
 .mp-manage { display: grid; gap: 6px; }
 .mp-manage-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center;
   font-size: 12.5px; padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
