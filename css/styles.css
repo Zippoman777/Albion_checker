@@ -131,6 +131,20 @@ code {
   font-size: 12.5px;
 }
 
+.mp-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(212, 175, 55, 0.10);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.35);
+  color: var(--gold-soft);
+  padding: 8px 18px;
+  font-size: 12.5px;
+}
+.btn-sm { padding: 4px 11px; font-size: 12px; }
+
 /* -------------------------------------------------------------------- tabs */
 
 .tabs {

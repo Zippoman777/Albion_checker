@@ -194,6 +194,23 @@
         (st.rateLimited ? ' · ' + st.rateLimited + ' rate-limited' : '') +
         (st.errors ? ' · ' + st.errors + ' errors' : '');
     }
+
+    // Manual-price banner: visible on every tab whenever overrides are active,
+    // so the user always knows some prices are hand-set and can wipe them all.
+    var mpb = document.getElementById('mp-banner');
+    if (mpb) {
+      var ov = AO.Settings.data.priceOverrides || {};
+      var mpIds = Object.keys(ov).filter(function (id) { return ov[id] && (ov[id].buy || ov[id].sell); });
+      if (mpIds.length) {
+        mpb.hidden = false;
+        mpb.innerHTML = '<span>⚑ <strong>' + mpIds.length + '</strong> manual price' +
+          (mpIds.length > 1 ? 's are' : ' is') + ' overriding live market data.</span>' +
+          '<button class="btn btn-danger btn-sm" id="mp-clear-all-banner">Clear all manual prices</button>';
+      } else {
+        mpb.hidden = true;
+        mpb.innerHTML = '';
+      }
+    }
   };
 
   App.worstQuoteAge = function () {
@@ -1245,6 +1262,17 @@
       if (!btn) return;
       e.stopPropagation();
       AO.UI.copy(btn.getAttribute('data-copy') || '');
+    });
+
+    // "Clear all manual prices" from the banner.
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('#mp-clear-all-banner');
+      if (!btn) return;
+      e.stopPropagation();
+      AO.Settings.data.priceOverrides = {};
+      AO.Settings.save();
+      App.reapplyPrices();
+      AO.UI.toast('All manual prices cleared');
     });
 
     // Delegated "Clear these overrides" buttons.
