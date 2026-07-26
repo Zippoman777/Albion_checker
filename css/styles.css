@@ -310,10 +310,12 @@ main { padding: 16px 18px 40px; max-width: 1800px; margin: 0 auto; }
 /* ------------------------------------------------------------------ tables */
 
 .table-scroll {
-  overflow-x: auto;
+  overflow: auto;                 /* scroll both axes inside the box … */
+  max-height: 70vh;               /* … so the sticky header freezes on scroll */
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--bg-2);
+  overscroll-behavior: contain;
 }
 
 .data-table {

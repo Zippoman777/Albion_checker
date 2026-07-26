@@ -1043,6 +1043,8 @@
         // Rebuild Settings on open so the "My prices" list reflects overrides
         // added from the calculator tabs since it was last rendered.
         if (target === 'settings') renderSettings();
+        // The newly-shown table was sized while hidden; size it now it's visible.
+        if (App.tables[target] && App.tables[target].sizeScroll) App.tables[target].sizeScroll();
         location.hash = target;
       });
     });
@@ -1360,6 +1362,13 @@
 
     // Keep the "x minutes ago" badges honest without a full re-render.
     setInterval(function () { App.renderHeader(); }, 60000);
+
+    // Re-fit the visible table's scroll height when the window resizes.
+    window.addEventListener('resize', AO.UI.debounce(function () {
+      Object.keys(App.tables).forEach(function (t) {
+        if (App.tables[t] && App.tables[t].sizeScroll) App.tables[t].sizeScroll();
+      });
+    }, 150));
 
     App.load(false);
 
