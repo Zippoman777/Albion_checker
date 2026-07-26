@@ -98,7 +98,9 @@
       resultId: id,
       resultQty: tuple[4] || 1,
       materials: tuple[5].map(function (m) { return { id: m[0], qty: m[1] }; }),
-      bonusCity: AO.CRAFT_BONUS_CITY[tuple[0]],
+      // Per-item Local Production Bonus city (baked into the data by tier/type),
+      // falling back to the broad-family default for any older data.
+      bonusCity: tuple[6] || AO.CRAFT_BONUS_CITY[tuple[0]],
       focusCost: tuple[3] || 0,
       name: null // resolved from the localized name dump at render time
     };

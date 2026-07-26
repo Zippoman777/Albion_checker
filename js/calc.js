@@ -89,11 +89,16 @@
   Calc.bestBuy = function (prices, itemId, cities, settings) {
     var byItem = prices[itemId];
     if (!byItem) return null;
+    // A user-entered buy price is authoritative: if you said what this costs,
+    // we use exactly that and ignore the market for this material.
+    var man = byItem[AO.MANUAL_BUY];
+    if (man && man.buyMax) {
+      return { city: AO.MANUAL_BUY, price: man.buyMax, ageMinutes: null, manual: true };
+    }
     var useSell = settings.useSellOrdersForMaterials;
     var maxAge = settings.maxDataAgeMinutes;
     var best = null;
-    // A user-entered buy price always competes as a sourcing option.
-    cities.concat(AO.MANUAL_BUY).forEach(function (city) {
+    cities.forEach(function (city) {
       var q = byItem[city];
       if (!q) return;
       var price = useSell ? q.sellMin : q.buyMax;
@@ -101,7 +106,7 @@
       if (!price) return;
       if (maxAge && age != null && age > maxAge) return;
       if (!best || price < best.price) {
-        best = { city: city, price: price, ageMinutes: age, manual: !!q.manual };
+        best = { city: city, price: price, ageMinutes: age, manual: false };
       }
     });
     return best;
@@ -157,9 +162,14 @@
   Calc.bestSell = function (prices, itemId, cities, settings) {
     var byItem = prices[itemId];
     if (!byItem) return null;
+    // A user-entered sell price is authoritative: use exactly what you set and
+    // ignore the market for this item.
+    var man = byItem[AO.MANUAL_SELL];
+    if (man && man.sellMin) {
+      return { city: AO.MANUAL_SELL, price: man.sellMin, ageMinutes: null, instant: false, blackMarket: false, manual: true };
+    }
     var candidates = cities.slice();
     if (settings.includeBlackMarket) candidates.push(AO.BLACK_MARKET);
-    candidates.push(AO.MANUAL_SELL); // a user-entered sell price always competes
     var ceiling = Calc.plausibleCeiling(prices, itemId, settings);
     var best = null;
     candidates.forEach(function (city) {

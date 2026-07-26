@@ -277,8 +277,8 @@
     // --- "My prices": per-item overrides for stale market data
     var ov = AO.Settings.data.priceOverrides || {};
     var myPrices = '<div class="detail-block"><h4>My prices ' +
-      '<span class="tip" title="Enter your own price to override stale or missing market data. ' +
-      'It applies instantly to every calculation across all tabs. Leave blank to use the market.">?</span></h4>' +
+      '<span class="tip" title="Enter your own price and it is used exactly — the market price ' +
+      'for that item is ignored. Applies to every tab. Leave blank to use the market.">?</span></h4>' +
       '<div class="mp-grid">' +
       mpInput(row.itemId, 'sell', AO.UI.itemName(row.itemId), 'sell') +
       row.materials.map(function (m) {
@@ -315,7 +315,9 @@
 
       '<div class="detail-block"><h4>Profit breakdown</h4>' +
       '<div class="mini-scroll"><table class="mini-table"><tbody>' +
-      line('Gross revenue (' + row.sellCity + (row.blackMarket ? ', NPC demand' : '') + ')', row.grossRevenue) +
+      line('Gross revenue (' +
+        (row.yield > 1 ? row.yield + ' × ' + AO.UI.exact(row.sellPrice) + ' in ' : '') +
+        row.sellCity + (row.blackMarket ? ', NPC demand' : '') + ')', row.grossRevenue) +
       line('− Setup fee (' + AO.UI.pct(s.setupFee) + ')', -row.setupFee) +
       line('− Sales fee (' + AO.UI.pct(s.salesFee) + ')', -row.salesFee) +
       line('− Material cost', -row.materialCost) +
