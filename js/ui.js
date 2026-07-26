@@ -150,26 +150,24 @@
   };
 
   /**
-   * Bring the row for `itemId` into view: switch to its page, optionally keep
-   * it expanded, scroll it to the middle and flash it so the eye can follow it
-   * after the table re-sorts.
+   * Freeze the current row order. While frozen, recomputes (e.g. applying a
+   * manual price) update the numbers in place without re-sorting — so the row
+   * the user is looking at never jumps. Sorting resumes the moment they click
+   * a column header (which calls thaw()).
    */
-  DataTable.prototype.focusItem = function (itemId, expand) {
-    var rows = this.visibleRows();
-    var idx = -1;
-    for (var i = 0; i < rows.length; i++) {
-      if (rows[i].itemId === itemId) { idx = i; break; }
-    }
-    if (idx < 0) return;
-    if (expand) this.expanded[rowKey(rows[idx])] = true;
-    this.page = Math.floor(idx / this.pageSize);
-    this.render();
-    var el = this.host.querySelector('.data-row[data-idx="' + idx + '"]');
-    if (el) {
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      el.classList.add('row-flash');
-      setTimeout(function () { el.classList.remove('row-flash'); }, 1600);
-    }
+  DataTable.prototype.freeze = function () {
+    var order = Object.create(null);
+    this.visibleRows().forEach(function (r, i) { order[r.itemId] = i; });
+    this.frozenOrder = order;
+  };
+  DataTable.prototype.thaw = function () { this.frozenOrder = null; };
+
+  /** Flash a row in place (no scroll) as a subtle "recalculated" cue. */
+  DataTable.prototype.flashItem = function (itemId) {
+    var el = this.host.querySelector('.data-row[data-item="' + (window.CSS && CSS.escape ? CSS.escape(itemId) : itemId) + '"]');
+    if (!el) return;
+    el.classList.add('row-flash');
+    setTimeout(function () { el.classList.remove('row-flash'); }, 1400);
   };
 
   DataTable.prototype.visibleRows = function () {
@@ -184,7 +182,16 @@
         (r.sellCity || '')).toLowerCase();
       return hay.indexOf(self.filterText) !== -1;
     });
-    if (this.sortKey) {
+    if (this.frozenOrder) {
+      // Positions are pinned: keep the order the user was looking at. Rows that
+      // didn't exist when we froze (rare) fall to the end.
+      var fo = this.frozenOrder;
+      rows.sort(function (a, b) {
+        var ia = fo[a.itemId] == null ? Infinity : fo[a.itemId];
+        var ib = fo[b.itemId] == null ? Infinity : fo[b.itemId];
+        return ia - ib;
+      });
+    } else if (this.sortKey) {
       var col = this.columns.filter(function (c) { return c.key === self.sortKey; })[0];
       if (col) {
         var val = col.sortValue || function (r) { return r[col.key]; };
@@ -228,7 +235,8 @@
 
     pageRows.forEach(function (r, i) {
       var rid = start + i;
-      html += '<tr class="data-row" data-idx="' + rid + '">';
+      html += '<tr class="data-row" data-idx="' + rid + '" data-item="' +
+        UI.escape(r.itemId || '') + '">';
       if (self.detail) {
         html += '<td class="col-expand"><button class="expand-btn" aria-expanded="' +
           (self.expanded[rowKey(r)] ? 'true' : 'false') + '">' +
@@ -271,6 +279,7 @@
     Array.prototype.forEach.call(this.host.querySelectorAll('thead th[data-key]'), function (th) {
       th.addEventListener('click', function () {
         var key = th.getAttribute('data-key');
+        self.thaw(); // an explicit sort click ends frozen ("stay put") mode
         if (self.sortKey === key) self.sortDir = -self.sortDir;
         else { self.sortKey = key; self.sortDir = -1; }
         self.render();

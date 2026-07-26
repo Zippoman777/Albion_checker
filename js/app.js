@@ -89,6 +89,8 @@
       self.fetchedAt = res.fetchedAt;
       self.partial = res.partial;
       self.loading = false;
+      // A genuine price refresh resumes normal sorting (clears any frozen order).
+      Object.keys(self.tables).forEach(function (t) { if (self.tables[t]) self.tables[t].thaw(); });
       AO.Calc.applyPriceOverrides(self.prices, AO.Settings.data.priceOverrides);
       self.recompute();
       self.renderHeader();
@@ -1341,16 +1343,19 @@
         });
         AO.Settings.save();
       }
-      // Which item + tab is being edited, so we can keep it in view afterwards.
+      // Which item + tab is being edited.
       var sellInput = detailRow && detailRow.querySelector('.mp-input[data-kind="sell"]');
       var itemId = sellInput ? sellInput.getAttribute('data-item') : null;
       var section = btn.closest('.tab-panel');
       var tab = section ? section.id.replace('tab-', '') : null;
 
+      // Pin the current order BEFORE recomputing so nothing jumps: the numbers
+      // update in place and the expanded row stays exactly where it is.
+      var table = tab && App.tables[tab];
+      if (table) table.freeze();
       App.reapplyPrices();
-      // Re-open the row and scroll it back so the user never loses their place.
-      if (tab && itemId && App.tables[tab]) App.tables[tab].focusItem(itemId, true);
-      AO.UI.toast('Recalculated with your prices');
+      if (table && itemId) table.flashItem(itemId);
+      AO.UI.toast('Recalculated — order held; click a column to re-sort');
     });
 
     // Keep the "x minutes ago" badges honest without a full re-render.

@@ -2,11 +2,11 @@
    The IndexedDB price cache in store.js is the real offline story; this exists
    so the shell itself boots without a network. */
 
-var SHELL_CACHE = 'apf-shell-v17';
-var DATA_CACHE = 'apf-data-v17';
+var SHELL_CACHE = 'apf-shell-v18';
+var DATA_CACHE = 'apf-data-v18';
 
 // Keep the ?v= stamps in sync with index.html — they are part of the cache key.
-var BUILD = '17';
+var BUILD = '18';
 var SHELL = [
   './',
   './index.html',
