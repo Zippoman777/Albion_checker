@@ -310,12 +310,12 @@ main { padding: 16px 18px 40px; max-width: 1800px; margin: 0 auto; }
 /* ------------------------------------------------------------------ tables */
 
 .table-scroll {
-  overflow: auto;                 /* scroll both axes inside the box … */
-  max-height: 70vh;               /* … so the sticky header freezes on scroll */
+  /* overflow must stay visible so the sticky header pins to the viewport as the
+     PAGE scrolls (an overflow container would trap it and defeat the purpose). */
+  overflow: visible;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--bg-2);
-  overscroll-behavior: contain;
 }
 
 .data-table {
@@ -327,7 +327,7 @@ main { padding: 16px 18px 40px; max-width: 1800px; margin: 0 auto; }
 
 .data-table thead th {
   position: sticky;
-  top: 0;
+  top: var(--thead-top, 0px); /* pin just below the sticky app header */
   z-index: 5;
   background: var(--bg-4);
   color: var(--gold-soft);

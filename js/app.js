@@ -1043,8 +1043,6 @@
         // Rebuild Settings on open so the "My prices" list reflects overrides
         // added from the calculator tabs since it was last rendered.
         if (target === 'settings') renderSettings();
-        // The newly-shown table was sized while hidden; size it now it's visible.
-        if (App.tables[target] && App.tables[target].sizeScroll) App.tables[target].sizeScroll();
         location.hash = target;
       });
     });
@@ -1363,12 +1361,18 @@
     // Keep the "x minutes ago" badges honest without a full re-render.
     setInterval(function () { App.renderHeader(); }, 60000);
 
-    // Re-fit the visible table's scroll height when the window resizes.
-    window.addEventListener('resize', AO.UI.debounce(function () {
-      Object.keys(App.tables).forEach(function (t) {
-        if (App.tables[t] && App.tables[t].sizeScroll) App.tables[t].sizeScroll();
-      });
-    }, 150));
+    // Keep the frozen column header pinned just under the sticky app header,
+    // whatever its current height (loading bar, wrapping on mobile, etc.).
+    function updateStickyOffset() {
+      var h = document.querySelector('.app-header');
+      var px = h ? Math.round(h.getBoundingClientRect().height) : 0;
+      document.documentElement.style.setProperty('--thead-top', px + 'px');
+    }
+    updateStickyOffset();
+    window.addEventListener('resize', AO.UI.debounce(updateStickyOffset, 150));
+    // The app header's height changes when the loading bar shows/hides.
+    var _origRenderHeader = App.renderHeader.bind(App);
+    App.renderHeader = function () { _origRenderHeader(); updateStickyOffset(); };
 
     App.load(false);
 

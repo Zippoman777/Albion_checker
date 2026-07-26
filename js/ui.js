@@ -155,23 +155,6 @@
    * the user is looking at never jumps. Sorting resumes the moment they click
    * a column header (which calls thaw()).
    */
-  /**
-   * Size the scroll box to fill from its top to the bottom of the viewport, so
-   * the whole table area is one scroll region with a sticky (frozen) header and
-   * the filters/summary stay pinned above it. No-op while the tab is hidden.
-   */
-  DataTable.prototype.sizeScroll = function () {
-    var scroll = this.host.querySelector('.table-scroll');
-    if (!scroll) return;
-    var top = scroll.getBoundingClientRect().top;
-    if (top < 1) return; // hidden / not laid out yet — CSS 70vh fallback applies
-    // Reserve room below for the pager (Prev/Next) so it stays on screen.
-    var pager = this.host.querySelector('.pager');
-    var pagerH = pager ? pager.offsetHeight : 0;
-    var h = window.innerHeight - top - pagerH - 16;
-    scroll.style.maxHeight = Math.max(220, h) + 'px';
-  };
-
   DataTable.prototype.freeze = function () {
     var order = Object.create(null);
     this.visibleRows().forEach(function (r, i) { order[r.itemId] = i; });
@@ -285,7 +268,6 @@
 
     this.host.innerHTML = html;
     this.bind(pageRows, start);
-    this.sizeScroll();
   };
 
   function rowKey(r) {
