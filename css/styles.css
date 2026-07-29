@@ -325,7 +325,10 @@ main { padding: 16px 18px 40px; max-width: 1800px; margin: 0 auto; }
   min-width: 900px;
 }
 
-.data-table thead th {
+/* Direct child only: a bare ".data-table thead th" also matches the nested
+   mini-tables inside an expanded detail row, which made their header stick and
+   overlap the material list. */
+.data-table > thead th {
   position: sticky;
   top: var(--thead-top, 0px); /* pin just below the sticky app header */
   z-index: 5;
@@ -342,9 +345,9 @@ main { padding: 16px 18px 40px; max-width: 1800px; margin: 0 auto; }
   border-bottom: 1px solid var(--line);
   user-select: none;
 }
-.data-table thead th:hover { background: #363029; color: var(--gold); }
-.data-table thead th.sorted { color: var(--gold); }
-.data-table thead th.col-expand { cursor: default; width: 34px; }
+.data-table > thead th:hover { background: #363029; color: var(--gold); }
+.data-table > thead th.sorted { color: var(--gold); }
+.data-table > thead th.col-expand { cursor: default; width: 34px; }
 
 .data-table tbody td {
   padding: 7px 10px;

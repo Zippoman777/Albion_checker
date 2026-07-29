@@ -98,6 +98,9 @@
       if (res.partial) {
         AO.UI.toast('Some price batches failed — showing partial data', 'warn');
       }
+      // Sold volumes load automatically in the background, then the tables
+      // re-render to fill in the Sold/day column.
+      self.autoLoadVolumes();
     }).catch(function (err) {
       self.loading = false;
       self.lastError = err.message || String(err);
@@ -194,7 +197,8 @@
       var st = AO.Api.stats;
       stats.textContent = st.requests + ' requests · ' + st.cacheHits + ' cache hits' +
         (st.rateLimited ? ' · ' + st.rateLimited + ' rate-limited' : '') +
-        (st.errors ? ' · ' + st.errors + ' errors' : '');
+        (st.errors ? ' · ' + st.errors + ' errors' : '') +
+        (this.volumesLoading ? ' · loading sold volumes…' : '');
     }
 
     // Manual-price banner: visible on every tab whenever overrides are active,
@@ -227,6 +231,36 @@
   };
 
   /* ------------------------------------------------------------ shared bits */
+
+  /**
+   * A per-city price table for one item: the lowest sell order (buy-it-now) and
+   * the highest buy order (sell-it-now) in each city, plus the Black Market buy.
+   * Built directly from the loaded price index — this is the raw market data
+   * behind the calculation.
+   */
+  function cityPricesBlock(itemId, s) {
+    var byCity = App.prices[itemId] || {};
+    var cities = s.activeCities.slice();
+    if (s.includeBlackMarket) cities.push(AO.BLACK_MARKET);
+    var rows = cities.map(function (city) {
+      var q = byCity[city];
+      var sellMin = q && q.sellMin ? q.sellMin : null;
+      var buyMax = q && q.buyMax ? q.buyMax : null;
+      var age = q ? AO.Calc.ageMinutes(sellMin ? q.sellAt : q.buyAt) : null;
+      var bm = city === AO.BLACK_MARKET;
+      return '<tr><td>' + AO.UI.escape(city) + (bm ? ' <span class="pill pill-bm">BM</span>' : '') + '</td>' +
+        '<td class="align-right">' + (sellMin ? AO.UI.exact(sellMin) : '—') + '</td>' +
+        '<td class="align-right">' + (buyMax ? AO.UI.exact(buyMax) : '—') + '</td>' +
+        '<td>' + (q && (sellMin || buyMax) ? AO.UI.ageBadge(age) : '<span class="muted">no data</span>') + '</td></tr>';
+    }).join('');
+    return '<div class="detail-block"><h4>Market prices by city ' +
+      '<span class="tip" title="Raw market data for this item. Sell (min) is the cheapest sell ' +
+      'order — what you pay to buy instantly. Buy (max) is the highest buy order — what you get ' +
+      'selling instantly. The Black Market only has buy orders.">?</span></h4>' +
+      '<div class="mini-scroll"><table class="mini-table"><thead><tr><th>City</th>' +
+      '<th class="align-right">Sell (min)</th><th class="align-right">Buy (max)</th>' +
+      '<th>Age</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+  }
 
   function detailPanel(row) {
     var s = AO.runtimeSettings();
@@ -304,6 +338,8 @@
       '<div id="' + volId + '" class="muted">Loading volume…</div></div>';
     loadVolume(volId, row.itemId, s.activeCities);
 
+    var cityPrices = cityPricesBlock(row.itemId, s);
+
     return '<div class="detail-grid">' +
       '<div class="detail-block detail-block-wide"><h4>Materials (optimal sourcing vs local)</h4>' +
       '<div class="mini-scroll"><table class="mini-table"><thead><tr><th>Material</th>' +
@@ -335,6 +371,8 @@
       ' · Per 1000: ' + AO.UI.silver(row.profitPer1000) +
       (row.focusCost ? ' · Per focus: ' + (row.profitPerFocus || 0).toFixed(1) : '') + '</div>' +
       '</div>' +
+
+      cityPrices +
 
       volume +
 
@@ -473,7 +511,7 @@
         },
         csv: function (r) { return r.profitPerFocus == null ? '' : r.profitPerFocus.toFixed(2); } },
       { key: 'volume', label: 'Sold/day', align: 'right',
-        tip: 'Average units of the finished item sold per day (last 7d). Use "Load sold volumes" to populate; sort by it to find liquid markets.',
+        tip: 'Average units of the finished item sold per day (last 7d), loaded automatically with prices. Sort by it to find liquid markets.',
         render: function (r) {
           var v = App.volumes[r.itemId];
           if (!v || v.perDay == null) return '<span class="muted">—</span>';
@@ -489,35 +527,32 @@
   }
 
   /**
-   * Batch-load sold-volume for every item in a calculator tab, then re-render
-   * so the "Sold/day" column fills in. Opt-in — it roughly doubles the API
-   * traffic of a page load, so it runs only when the user asks.
+   * Automatically batch-load sold-volume for every item across the calculator
+   * tabs, in the background, then re-render so the "Sold/day" column fills in.
+   * Runs after each price load/refresh (volumes are cached, so a refresh within
+   * the cache window is cheap).
    */
-  App.loadVolumes = function (tab) {
+  App.autoLoadVolumes = function () {
     if (this.volumesLoading) return;
-    var rows = this.results[tab] || [];
-    var ids = rows.map(function (r) { return r.itemId; });
+    var seen = Object.create(null);
+    ['crafting', 'refining', 'cooking'].forEach(function (k) {
+      (App.results[k] || []).forEach(function (r) { seen[r.itemId] = 1; });
+    });
+    (App.results.transport || []).forEach(function (r) { seen[r.itemId] = 1; });
+    var ids = Object.keys(seen);
     if (!ids.length) return;
     this.volumesLoading = true;
-    var btn = document.getElementById(tab + '-volumes');
-    if (btn) { btn.disabled = true; btn.textContent = '📊 Loading… 0%'; }
+    this.renderHeader();
     var royal = AO.Settings.activeCities().filter(function (c) { return c !== AO.BLACK_MARKET; });
 
-    AO.Api.getVolumes(ids, royal, {
-      onProgress: function (done, total) {
-        if (btn) btn.textContent = '📊 Loading… ' + Math.round(done / total * 100) + '%';
-      }
-    }).then(function (map) {
+    AO.Api.getVolumes(ids, royal, {}).then(function (map) {
       Object.assign(App.volumes, map);
       App.volumesLoading = false;
-      if (btn) { btn.disabled = false; btn.textContent = '📊 Reload volumes'; }
-      var fn = 'render' + tab.charAt(0).toUpperCase() + tab.slice(1);
-      if (App[fn]) App[fn]();
-      AO.UI.toast('Sold volumes loaded — sort by the Sold/day column');
-    }).catch(function (err) {
+      App.renderAll();
+      App.renderHeader();
+    }).catch(function () {
       App.volumesLoading = false;
-      if (btn) { btn.disabled = false; btn.textContent = '📊 Load sold volumes'; }
-      AO.UI.toast('Could not load volumes: ' + (err.message || err), 'err');
+      App.renderHeader();
     });
   };
 
@@ -920,12 +955,6 @@
     var cat = document.getElementById(tab + '-category');
     var csv = document.getElementById(tab + '-csv');
     var copy = document.getElementById(tab + '-copy');
-    var vol = document.getElementById(tab + '-volumes');
-
-    if (vol && !vol._wired) {
-      vol._wired = true;
-      vol.addEventListener('click', function () { App.loadVolumes(tab); });
-    }
 
     if (search && !search._wired) {
       search._wired = true;
