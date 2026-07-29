@@ -440,12 +440,19 @@ main { padding: 16px 18px 40px; max-width: 1800px; margin: 0 auto; }
   gap: 14px 22px;
   padding: 14px 16px;
   border-left: 3px solid var(--gold-dim);
+  /* Reset the nowrap inherited from ".data-table tbody td" so prose in the
+     detail blocks (e.g. the quality distribution line) wraps instead of being
+     clipped. Mini-table figures keep their own explicit nowrap. */
+  white-space: normal;
 }
 
 /* Grid items default to min-width:auto, which lets a wide table push past its
    track and overlap the next block. min-width:0 lets it shrink so .mini-scroll
    can take over and scroll instead. */
-.detail-block { min-width: 0; }
+/* min-width:0 lets the grid item shrink; overflow-wrap breaks long lines; and
+   overflow:hidden is the safety net so a block's content can never visually
+   spill over the neighbouring block (e.g. quality procs over per-city). */
+.detail-block { min-width: 0; overflow: hidden; overflow-wrap: anywhere; }
 
 /* The materials table has seven columns — give it two tracks when there is room. */
 @media (min-width: 1100px) {
